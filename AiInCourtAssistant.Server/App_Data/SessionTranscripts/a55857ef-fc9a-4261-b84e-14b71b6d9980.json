@@ -1,0 +1,512 @@
+{
+  "sessionId": "a55857ef-fc9a-4261-b84e-14b71b6d9980",
+  "tenantId": "00000000-0000-0000-0000-000000000000",
+  "courtroom": "Courtroom B",
+  "docketDate": "2025-12-18",
+  "status": "Complete",
+  "chunks": [
+    {
+      "eventId": 101321,
+      "caseId": 0,
+      "confidence": 0.6,
+      "notesSummary": "1) Raymond C. Morgan pleaded guilty to third-degree criminal mischief. The court imposed a fine of $250 and court costs of $100, along with a requirement of 40 hours of community service. No jail time will be served if he completes the community service and pays the fines by the next review hearing set for March 15, 2026.\n\n2) \n- Plea: Guilty\n- Finding/Disposition: Accepted plea\n- Fine/Fees: $250 fine, $100 court costs\n- Next Date: 03/15/2026 at 01:30 PM\n- Conditions: 40 hours of community service, payment of fines and costs\n- Action/Items: Compliance review",
+      "transcriptExcerpt": "State of Nevada versus Raymond c Morgan.\r\nMister Morgan, please step forward.\r\nMister Morgan appears with counsel.\r\nOn count one, criminal mischief in the third degree, how do you plead?\r\nThe defendant pleads guilty.\r\nThe court accepts the plea.\r\nOn this case, the sentence is a fine of $250 in court cost of $100 The court is also ordering forty hours of community service as a condition of the sentence.\r\nThere will be no jail time provided the defendant completes community service and pays the fine and court costs.\r\nThis matter is continued for compliance review.\r\nThe status review hearing is s",
+      "suggestions": [],
+      "segments": [
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "State of Nevada versus Raymond c Morgan."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Mister Morgan, please step forward."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Mister Morgan appears with counsel."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "On count one, criminal mischief in the third degree, how do you plead?"
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "The defendant pleads guilty."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "The court accepts the plea."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "On this case, the sentence is a fine of $250 in court cost of $100 The court is also ordering forty hours of community service as a condition of the sentence."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "There will be no jail time provided the defendant completes community service and pays the fine and court costs."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "This matter is continued for compliance review."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "The status review hearing is set for 03/15/2026 at 01:30PM."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Mister Morgan, you must complete community service and confirm payment prior to the date."
+        }
+      ]
+    },
+    {
+      "eventId": 101320,
+      "caseId": 0,
+      "confidence": 0.6,
+      "notesSummary": "1) Amy Lee Miller failed to appear for her arraignment in case number 25CR786540. The court has issued a bench warrant for her arrest and set a bond amount of $500.\n\n2) \n- Plea: -\n- Finding/Disposition: Failure to appear; bench warrant issued\n- Fine/Fees: $500 bond\n- Next Date: -\n- Conditions: -\n- Action/Items: Issue bench warrant",
+      "transcriptExcerpt": "Case number 25CR786540, state of Nevada versus Amy Lee Miller.\r\nMiss Miller is not present in the courtroom.\r\nThe clerk confirms the defendant received notice of today\u0027s hearing.\r\nThe court finds the defendant failed to appear for arraignment.\r\nA bench warrant will be issued for the defendant\u0027s arrest, and bond is set in the amount of $500 The record shall reflect a failure to appear and issue of a bench warrant.\r\nFailure to appear and the issue of a bench warrant.",
+      "suggestions": [],
+      "segments": [
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Case number 25CR786540, state of Nevada versus Amy Lee Miller."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Miss Miller is not present in the courtroom."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "The clerk confirms the defendant received notice of today\u0027s hearing."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "The court finds the defendant failed to appear for arraignment."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "A bench warrant will be issued for the defendant\u0027s arrest, and bond is set in the amount of $500 The record shall reflect a failure to appear and issue of a bench warrant."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Failure to appear and the issue of a bench warrant."
+        }
+      ]
+    },
+    {
+      "eventId": 101319,
+      "caseId": 0,
+      "confidence": 0.6,
+      "notesSummary": "1) Bart Simpson appeared for arraignment on a no insurance citation, but no plea was taken. He is required to provide proof of insurance, and the case is continued for compliance, with a status review scheduled for January 2026 at 9 AM. Failure to comply may lead to additional penalties.\n\n2) \n- Plea: -\n- Finding/Disposition: -\n- Fine/Fees: -\n- Next Date: January 2026 at 9 AM\n- Conditions: Provide proof of insurance\n- Action/Items: Case continued for compliance",
+      "transcriptExcerpt": "Case number 25098765, State of Nevada versus Bart Simpson.\r\nMister Simpson is present.\r\nThis matter is called for arraignment on a no insurance citation.\r\nNo plea will be taken today.\r\nMister Simpson, you\u0027re ordered to bring proof of insurance.\r\nThe case is continued for compliance.\r\nThe next court date is January 2026 at 9AM for a status review.\r\nFailure to provide proof of insurance may result in additional penalties.",
+      "suggestions": [],
+      "segments": [
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Case number 25098765, State of Nevada versus Bart Simpson."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Mister Simpson is present."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "This matter is called for arraignment on a no insurance citation."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "No plea will be taken today."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Mister Simpson, you\u0027re ordered to bring proof of insurance."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "The case is continued for compliance."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "The next court date is January 2026 at 9AM for a status review."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Failure to provide proof of insurance may result in additional penalties."
+        }
+      ]
+    },
+    {
+      "eventId": 101318,
+      "caseId": 0,
+      "confidence": 0.6,
+      "notesSummary": "1) Dan Smith appeared in court for charges of speeding and possession of a controlled substance. He pleaded guilty to speeding, resulting in a $200 fine and $90 in court costs, with the option to attend traffic school. He pleaded not guilty to the possession charge, which is scheduled for a status check on February 15, 2026.\n\n2) \n- Plea: Guilty (speeding), Not Guilty (possession)\n- Finding/Disposition: Accepted plea for speeding, status check for possession\n- Fine/Fees: $200 fine, $90 court costs\n- Next Date: 02/15/2026 at 9AM\n- Conditions: Attend traffic school (for speeding)\n- Action/Items: Payment due within thirty days",
+      "transcriptExcerpt": "Case number 25785321, state of Nevada versus Dan Smith.\r\nMister Smith appears in court on the charges of speeding 20 miles per hour over the posted limit.\r\nHow do you plead?\r\nThe defendant pleads guilty.\r\nThe court accepts the plea.\r\nThe sentence is a fine of $200 and the court costs $90 There will be no jail time.\r\nMister Smith may attend traffic school, and if completed, no points will be assessed on his driver\u0027s license.\r\nPayment of the fine and cost is due within thirty days.\r\nOn the charge of possession of controlled substance, how do you plead?\r\nThe defendant plead not guilty.\r\nThis matt",
+      "suggestions": [],
+      "segments": [
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Case number 25785321, state of Nevada versus Dan Smith."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Mister Smith appears in court on the charges of speeding 20 miles per hour over the posted limit."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "How do you plead?"
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "The defendant pleads guilty."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "The court accepts the plea."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "The sentence is a fine of $200 and the court costs $90 There will be no jail time."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Mister Smith may attend traffic school, and if completed, no points will be assessed on his driver\u0027s license."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Payment of the fine and cost is due within thirty days."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "On the charge of possession of controlled substance, how do you plead?"
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "The defendant plead not guilty."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "This matter is set for a status check."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "The next court date is 02/15/2026 at 9AM."
+        }
+      ]
+    },
+    {
+      "eventId": 88857,
+      "caseId": 0,
+      "confidence": 0.6,
+      "notesSummary": "1) Marilyn S. Rogers, represented by counsel, entered a plea of not guilty in case number 25CF199961, State of Nevada versus Marilyn S. Rogers. A pretrial conference is scheduled for February 8, 2026, at 10:30 AM.\n\n2) \n\u0060\u0060\u0060\nPlea: Not Guilty\nFinding/Disposition: -\nFine/Fees: -\nNext Date: 02/08/2026\nConditions: -\nAction/Items: Pretrial conference scheduled\n\u0060\u0060\u0060",
+      "transcriptExcerpt": "Case number 25CF199961, State of Nevada versus Marilyn s Rogers.\r\nMiss Rogers appears with counsel.\r\nThe defendant enters a plea of not guilty.\r\nThis matter is set for pretrial conference.\r\nThe pretrial hearing is scheduled for 02/08/2026 at 10:30AM.",
+      "suggestions": [],
+      "segments": [
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Case number 25CF199961, State of Nevada versus Marilyn s Rogers."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Miss Rogers appears with counsel."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "The defendant enters a plea of not guilty."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "This matter is set for pretrial conference."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "The pretrial hearing is scheduled for 02/08/2026 at 10:30AM."
+        }
+      ]
+    },
+    {
+      "eventId": 71017,
+      "caseId": 0,
+      "confidence": 0.6,
+      "notesSummary": "1) The case involves Jenny G. Allen, who is present for the proceedings in the state of Nevada. The case number is 25CF182121.\n\n2) \n- Plea: -\n- Finding/Disposition: -\n- Fine/Fees: -\n- Next Date: -\n- Conditions: -\n- Action/Items: -",
+      "transcriptExcerpt": "Case number 25CF182121, state of Nevada versus Jenny g Allen.\r\nMiss Allen is present.",
+      "suggestions": [],
+      "segments": [
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Case number 25CF182121, state of Nevada versus Jenny g Allen."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Miss Allen is present."
+        }
+      ]
+    },
+    {
+      "eventId": 53277,
+      "caseId": 0,
+      "confidence": 0.6,
+      "notesSummary": "1) Richard J. Anderson pleaded guilty in case number 25CF-one64381, and the court accepted the plea. He was sentenced to a fine of $300, a court cost of $120, and required to complete an outpatient counseling program, with the case continued for a compliance review.\n\n2) \n- Plea: Guilty\n- Finding/Disposition: Accepted\n- Fine/Fees: $300 fine, $120 court cost\n- Next Date: Compliance review\n- Conditions: Completion of outpatient counseling program\n- Action/Items: -",
+      "transcriptExcerpt": "Case number 25CF-one64381, State of Nevada versus Richard J.\r\nAnderson.\r\nMr.\r\nAnderson appears.\r\nThe defendant pleads guilty pursuant to negotiations.\r\nThe court accepts the plea.\r\nThe sentence includes a fine of $300 court cost of and court cost of $120 and completion of an outpatient counseling program.\r\nThis matter is continued for compliance review.",
+      "suggestions": [],
+      "segments": [
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Case number 25CF-one64381, State of Nevada versus Richard J."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Anderson."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Mr."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Anderson appears."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "The defendant pleads guilty pursuant to negotiations."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "The court accepts the plea."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "The sentence includes a fine of $300 court cost of and court cost of $120 and completion of an outpatient counseling program."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "This matter is continued for compliance review."
+        }
+      ]
+    },
+    {
+      "eventId": 35497,
+      "caseId": 0,
+      "confidence": 0.6,
+      "notesSummary": "1) David J. Young pleads no contest in case number 25 CF 146601. The court accepts the plea and imposes a fine of $150 along with court costs of $80, which are due within thirty days.\n\n2) \n- Plea: No contest\n- Finding/Disposition: Accepted\n- Fine/Fees: $150 fine, $80 court costs\n- Next Date: -\n- Conditions: Payment due within thirty days\n- Action/Items: -",
+      "transcriptExcerpt": "Case number 25 CF 146601, State of Nevada versus David J.\r\nYoung.\r\nMister Young is present.\r\nThe defendant pleads no contest.\r\nThe court accepts the plea.\r\nThe sentence includes a fine of $150 in court costs of $80 Payment is due within thirty days.",
+      "suggestions": [],
+      "segments": [
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Case number 25 CF 146601, State of Nevada versus David J."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Young."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Mister Young is present."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "The defendant pleads no contest."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "The court accepts the plea."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "The sentence includes a fine of $150 in court costs of $80 Payment is due within thirty days."
+        }
+      ]
+    },
+    {
+      "eventId": 26557,
+      "caseId": 0,
+      "confidence": 0.6,
+      "notesSummary": "1) In the case of State of Nevada versus Allison S. Green, the defendant pleaded guilty. The court imposed a fine of $100, a court cost of $90, and ordered the completion of traffic school.\n\n2) \n- Plea: Guilty\n- Finding/Disposition: -\n- Fine/Fees: $100 fine, $90 court cost\n- Next Date: -\n- Conditions: Completion of traffic school\n- Action/Items: -",
+      "transcriptExcerpt": "Case number 25 CF 137661, State of Nevada versus Allison S.\r\nGreen.\r\nMs.\r\nGreen appears the defendant pleads guilty.\r\nThe court imposes a fine of $100 court cost of $90 and orders completion of traffic school.",
+      "suggestions": [],
+      "segments": [
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Case number 25 CF 137661, State of Nevada versus Allison S."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Green."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Ms."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Green appears the defendant pleads guilty."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "The court imposes a fine of $100 court cost of $90 and orders completion of traffic school."
+        }
+      ]
+    },
+    {
+      "eventId": 17737,
+      "caseId": 0,
+      "confidence": 0.6,
+      "notesSummary": "1) The court case involving Norman Morgan resulted in a finding of failure to appear, leading to the issuance of a bench warrant with a bond set at $1,000. Mr. Morgan was not present during the proceedings.\n\n2) \n- Plea: -\n- Finding/Disposition: Failure to appear\n- Fine/Fees: -\n- Next Date: -\n- Conditions: Bench warrant issued, bond set at $1,000\n- Action/Items: -",
+      "transcriptExcerpt": "Case number twenty five CF one two eight eight four one, state of Nevada versus Norman Morgan.\r\nMister Morgan is not present.\r\nThe court finds a failure to appear.\r\nA bench warrant will issue and bond set at $1,000 This concludes the arraignment docket for this session.",
+      "suggestions": [],
+      "segments": [
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Case number twenty five CF one two eight eight four one, state of Nevada versus Norman Morgan."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Mister Morgan is not present."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "The court finds a failure to appear."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "A bench warrant will issue and bond set at $1,000 This concludes the arraignment docket for this session."
+        }
+      ]
+    }
+  ],
+  "error": null
+}

@@ -1,0 +1,657 @@
+{
+  "sessionId": "c7bdb4fd-a15f-476d-bcbe-2cb6073414a6",
+  "tenantId": "00000000-0000-0000-0000-000000000000",
+  "courtroom": "Courtroom B",
+  "docketDate": "2025-10-14",
+  "status": "Complete",
+  "chunks": [
+    {
+      "eventId": 101315,
+      "caseId": 0,
+      "confidence": 0.6,
+      "notesSummary": "1) Scott G. Loggins pleaded guilty to speeding 20 over in case number 19 TC 207305. The court accepted the plea and imposed a fine of $150 plus $90 in court costs, to be paid within 30 days, with no jail time required.\n\n2) \n- Plea: Guilty\n- Finding/Disposition: Accepted plea\n- Fine/Fees: $150 fine, $90 court costs\n- Next Date: -\n- Conditions: No jail\n- Action/Items: Payment instructions to be provided before leaving",
+      "transcriptExcerpt": "Case number 19 TC 207305, Scott G.\r\nLoggins, charged speeding 20 over.\r\nMr.\r\nLoggins, how do you wish to plead?\r\nGuilty, your honor.\r\nState recommends $150 fine",
+      "suggestions": [],
+      "segments": [
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Case number 19 TC 207305, Scott G."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Loggins, charged speeding 20 over."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Mr."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Loggins, how do you wish to plead?"
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Guilty, your honor."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "State recommends $150 fine, $90 court costs."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Court accepts the plea."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Defendant pleads guilty."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Fine $150 plus costs."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Due in 30 days."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "No jail."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "You\u0027ll receive payment instructions before you leave."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Anything else?"
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "No, your honor."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Next case."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Status is completed."
+        }
+      ]
+    },
+    {
+      "eventId": 101314,
+      "caseId": 0,
+      "confidence": 0.6,
+      "notesSummary": "1) Summary: Austin J. Wilson appeared in court for a charge of no proof of insurance. He indicated that he purchased a policy but did not have the card. The matter was continued for state review, with the next court date set for October 21, 2025, at 9 AM, where he is required to bring proof of insurance.\n\n2) Key-Value Block:\n- Plea: -\n- Finding/Disposition: Continued for state review\n- Fine/Fees: -\n- Next Date: October 21, 2025, at 9 AM\n- Conditions: Bring proof of insurance\n- Action/Items: -",
+      "transcriptExcerpt": "19 TI 207296, Austin J.\r\nWilson, no proof of insurance.\r\nMr.\r\nWilson, do you have proof today?\r\nI purchased the policy yesterday, but I don\u0027t have the card.\r\nSt",
+      "suggestions": [
+        {
+          "kind": "CONT",
+          "title": "Mark status = CONT",
+          "body": "Continuance language detected.",
+          "confidence": 0.8
+        }
+      ],
+      "segments": [
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "19 TI 207296, Austin J."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Wilson, no proof of insurance."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Mr."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Wilson, do you have proof today?"
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "I purchased the policy yesterday, but I don\u0027t have the card."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "State is willing to review for compliance."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "All right, matter continued for state review."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Next court date, October 21, 2025 at 9 o\u0027clock AM."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Bring proof then."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Noted, your honor."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Event status continued."
+        }
+      ]
+    },
+    {
+      "eventId": 101313,
+      "caseId": 0,
+      "confidence": 0.6,
+      "notesSummary": "1) Stephanie McGray was charged with speeding 15 over but failed to appear in court. The state moved for a bench warrant due to her absence, which was granted, and the case status is now a bench warrant for failure to appear.\n\n2) \n- Plea: -\n- Finding/Disposition: Bench warrant issued\n- Fine/Fees: -\n- Next Date: -\n- Conditions: Standard bond\n- Action/Items: Failure to appear",
+      "transcriptExcerpt": "19 TC 207285, Stephanie McGray, speeding 15 over.\r\nFirst call, no response.\r\nSecond call for Ms.\r\nMcGray, no response.\r\nState moves for bench warrant.\r\nRecord w",
+      "suggestions": [
+        {
+          "kind": "FTA",
+          "title": "Mark status = FTA",
+          "body": "Detected \u0027failure to appear\u0027 phrasing.",
+          "confidence": 0.9
+        },
+        {
+          "kind": "BW",
+          "title": "Case status = Bench Warrant",
+          "body": "FTA context; consider bench warrant.",
+          "confidence": 0.7
+        }
+      ],
+      "segments": [
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "19 TC 207285, Stephanie McGray, speeding 15 over."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "First call, no response."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Second call for Ms."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "McGray, no response."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "State moves for bench warrant."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Record will reflect the defendant failed to appear."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Motion for granted bench warrant to issue with standard bond."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Event status, failure to appear."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Case status to bench warrant."
+        }
+      ]
+    },
+    {
+      "eventId": 101312,
+      "caseId": 0,
+      "confidence": 0.6,
+      "notesSummary": "1) Barbara Craig\u0027s case regarding expired registration has been continued to allow her time to provide proof of renewal, which is currently in process. A status review date has been set for November 4, 2025, at 9:00 AM.\n\n2) \n- Plea: -\n- Finding/Disposition: Continued\n- Fine/Fees: -\n- Next Date: November 4, 2025, at 9:00 AM\n- Conditions: Bring proof of renewal\n- Action/Items: Status review",
+      "transcriptExcerpt": "19 TI 207276, Barbara Craig, expired registration.\r\nMs.\r\nCraig, have you renewed?\r\nRenewal is in process.\r\nState requests a short continuance for proof.\r\nGrante",
+      "suggestions": [
+        {
+          "kind": "CONT",
+          "title": "Mark status = CONT",
+          "body": "Continuance language detected.",
+          "confidence": 0.8
+        }
+      ],
+      "segments": [
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "19 TI 207276, Barbara Craig, expired registration."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Ms."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Craig, have you renewed?"
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Renewal is in process."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "State requests a short continuance for proof."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Granted, matter continued."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Set status review date, November 4, 2025 at 9 o\u0027clock AM."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Bring proof of renewal."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Noted, event status continued."
+        }
+      ]
+    },
+    {
+      "eventId": 101311,
+      "caseId": 0,
+      "confidence": 0.6,
+      "notesSummary": "1) Roger Ullman faced a charge for an equipment violation due to a broken taillight. He provided proof of correction, including a receipt and a photo, leading the state to move for dismissal of the case, which was granted upon compliance.\n\n2) \n- Plea: -\n- Finding/Disposition: Case dismissed on compliance\n- Fine/Fees: -\n- Next Date: -\n- Conditions: Proof of correction provided\n- Action/Items: Receipt and photo submitted",
+      "transcriptExcerpt": "18 TI 207256, Roger Ullman, equipment violation, broken taillight.\r\nProof of correction?\r\nYes, your honor.\r\nReceipt and a photo.\r\nState moves to dismiss upon co",
+      "suggestions": [],
+      "segments": [
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "18 TI 207256, Roger Ullman, equipment violation, broken taillight."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Proof of correction?"
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Yes, your honor."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Receipt and a photo."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "State moves to dismiss upon compliance."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Granted, case dismissed on compliance."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Event status completed."
+        }
+      ]
+    },
+    {
+      "eventId": 101310,
+      "caseId": 0,
+      "confidence": 0.6,
+      "notesSummary": "1) Anna Walter pleaded guilty to careless driving. The court accepted her plea and imposed a $200 fine, with the option for traffic school within 60 days to avoid points on her record.\n\n2) \n- Plea: Guilty\n- Finding/Disposition: Accepted plea\n- Fine/Fees: $200 plus costs\n- Next Date: -\n- Conditions: Traffic school authorized within 60 days\n- Action/Items: Completion will avoid points",
+      "transcriptExcerpt": "18 TC 207245, Anna Walter, careless driving.\r\nMs.\r\nWalter, plea guilty.\r\nState recommends a $200 fine traffic school option.\r\nThe court accepts the plea.\r\nDefen",
+      "suggestions": [],
+      "segments": [
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "18 TC 207245, Anna Walter, careless driving."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Ms."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Walter, plea guilty."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "State recommends a $200 fine traffic school option."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "The court accepts the plea."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Defendant pleads guilty."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Fine $200 plus costs."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Traffic school authorized within 60 days."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Completion will avoid points."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Event status completed."
+        }
+      ]
+    },
+    {
+      "eventId": 101309,
+      "caseId": 0,
+      "confidence": 0.6,
+      "notesSummary": "1) Jeffrey Parsons was charged with no insurance and accepted a diversion offer, which requires him to provide proof of a six-month insurance policy and pay an administrative fee. The case is continued for diversion compliance, with a review scheduled for December 9, 2025, at 9:00 AM.\n\n2) \n- Plea: Accepted diversion\n- Finding/Disposition: Continued for diversion compliance\n- Fine/Fees: Administrative fee\n- Next Date: December 9, 2025, at 9:00 AM\n- Conditions: Proof of six-month policy\n- Action/Items: -",
+      "transcriptExcerpt": "18 TI 207236, Jeffrey Parsons, no insurance.\r\nDiversion offer.\r\nProof of six month policy and administrative fee.\r\nMr.\r\nParsons, do you accept diversion?\r\nYes, ",
+      "suggestions": [
+        {
+          "kind": "CONT",
+          "title": "Mark status = CONT",
+          "body": "Continuance language detected.",
+          "confidence": 0.8
+        }
+      ],
+      "segments": [
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "18 TI 207236, Jeffrey Parsons, no insurance."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Diversion offer."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Proof of six month policy and administrative fee."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Mr."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Parsons, do you accept diversion?"
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Yes, your honor."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Accepted."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Matter continued for diversion compliance."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Set review December 9, 2025 at 9 o\u0027clock AM."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Status is continued."
+        }
+      ]
+    },
+    {
+      "eventId": 101308,
+      "caseId": 0,
+      "confidence": 0.6,
+      "notesSummary": "1) The case against Camille Constable for failure to yield was dismissed after the state moved to dismiss due to the officer\u0027s unavailability. The motion was granted, and the case is now completed.\n\n2) \n- Plea: -\n- Finding/Disposition: Case dismissed\n- Fine/Fees: -\n- Next Date: -\n- Conditions: -\n- Action/Items: Motion granted",
+      "transcriptExcerpt": "18 TC 207225, Camille Constable, failure to yield.\r\nState moves to dismiss.\r\nOfficer unavailable and VO inclusive.\r\nMotion granted.\r\nCase dismissed.\r\nEvent stat",
+      "suggestions": [],
+      "segments": [
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "18 TC 207225, Camille Constable, failure to yield."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "State moves to dismiss."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Officer unavailable and VO inclusive."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Motion granted."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Case dismissed."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Event status completed."
+        }
+      ]
+    },
+    {
+      "eventId": 101307,
+      "caseId": 0,
+      "confidence": 0.6,
+      "notesSummary": "1) The defendant, Whitney W. Sally, was charged with speeding 10 miles over the limit but failed to appear in court for the hearing. The case was noted as concluded due to her absence.\n\n2) \n- Plea: -\n- Finding/Disposition: Failed to appear\n- Fine/Fees: -\n- Next Date: -\n- Conditions: -\n- Action/Items: Concluded docket",
+      "transcriptExcerpt": "18 TI 207216, Whitney W.\r\nSally, speeding 10 over.\r\nFirst call, no response.\r\nSecond call for Ms.\r\nSally, no response.\r\nThe record will reflect the defendant fa",
+      "suggestions": [
+        {
+          "kind": "FTA",
+          "title": "Mark status = FTA",
+          "body": "Detected \u0027failure to appear\u0027 phrasing.",
+          "confidence": 0.9
+        },
+        {
+          "kind": "BW",
+          "title": "Case status = Bench Warrant",
+          "body": "FTA context; consider bench warrant.",
+          "confidence": 0.7
+        }
+      ],
+      "segments": [
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "18 TI 207216, Whitney W."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Sally, speeding 10 over."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "First call, no response."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Second call for Ms."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Sally, no response."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "The record will reflect the defendant failed to appear."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "And that concludes the docket."
+        }
+      ]
+    }
+  ],
+  "error": null
+}

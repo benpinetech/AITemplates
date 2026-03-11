@@ -1,0 +1,23 @@
+%[}{\rtlch\fcs1 \af0\afs24 \ltrch\fcs0 
+\fs24\cf2\insrsid2380224\charrsid2380224 JW_Atty_Pros_Active.LastName}{\rtlch\fcs1 \af0\afs24 \ltrch\fcs0 \fs24\insrsid2380224\charrsid2380224 ]
+%[}{\rtlch\fcs1 \af0\afs24 \ltrch\fcs0 
+\fs24\cf2\insrsid2380224\charrsid2380224 kf_Atty_Pros_Active.FullName}{\rtlch\fcs1 \af0\afs24 \ltrch\fcs0 \fs24\insrsid2380224\charrsid2380224 ]
+%[}{\rtlch\fcs1 \af0\afs24 \ltrch\fcs0 \b\fs24\cf2\insrsid2380224\charrsid2380224 EndIf}{\rtlch\fcs1 \af0\afs24 \ltrch\fcs0 \b\fs24\insrsid2380224\charrsid2380224 ]
+%[}{\rtlch\fcs1 \af0\afs24 \ltrch\fcs0 \fs24\cf2\cgrid0\insrsid2380224\charrsid2380224 KF_PhoneNumberActive.PhoneNumber}{\rtlch\fcs1 \af0\afs24 \ltrch\fcs0 
+\fs24\cgrid0\insrsid2380224\charrsid2380224 ]
+%[}{\rtlch\fcs1 \af0\afs24 \ltrch\fcs0 \fs24\cf2\insrsid2380224\charrsid2380224 If(Subpoena.SubpoenaTo=Attend)}{\rtlch\fcs1 \af0\afs24 \ltrch\fcs0 
+\fs24\insrsid2380224\charrsid2380224 ]
+%[}{\rtlch\fcs1 \af0\afs24 \ltrch\fcs0 \fs24\cf2\insrsid2380224\charrsid2380224 Initials(JW_Atty_Pros_Active.FirstName,True )}{\rtlch\fcs1 \af0\afs24 \ltrch\fcs0 \fs24\insrsid2380224\charrsid2380224 ]
+%[}{\rtlch\fcs1 \af0\afs24 \ltrch\fcs0 \fs24\cf2\insrsid2380224\charrsid2380224 kf_Atty_Pros_Active.FBINUM}{
+\rtlch\fcs1 \af0\afs24 \ltrch\fcs0 \fs24\insrsid2380224\charrsid2380224 ]
+%[}{\rtlch\fcs1 \af0\afs24 \ltrch\fcs0 \fs24\cf2\insrsid2380224\charrsid2380224 KF_AttyProsTitle.NameAttributeValue}{\rtlch\fcs1 \af0\afs24 \ltrch\fcs0 \fs24\insrsid2380224\charrsid2380224 ]
+%[}{\rtlch\fcs1 \af1 \ltrch\fcs0 \b\f1\cf2\insrsid2380224\charrsid2380224 
+ElseIf(Subpoena.SubpoenaTo=Attend and Produce)}{\rtlch\fcs1 \af1 \ltrch\fcs0 \b\f1\insrsid2380224\charrsid2380224 ]
+%[}{\rtlch\fcs1 \af1 \ltrch\fcs0 \b\f1\cf2\insrsid2380224\charrsid2380224 If(Subpoena.SubpoenaTo=Attend)}{\rtlch\fcs1 \af1 \ltrch\fcs0 \b\f1\insrsid2380224\charrsid2380224 ]
+%[}{\rtlch\fcs1 \af1 \ltrch\fcs0 \f1\cf2\insrsid2380224\charrsid2380224 
+Else}{\rtlch\fcs1 \af1 \ltrch\fcs0 \f1\insrsid2380224\charrsid2380224 ]
+%[}{\rtlch\fcs1 \af1 \ltrch\fcs0 \f1\cf2\insrsid2380224\charrsid2380224 ElseIf(Subpoena.SubpoenaTo=Attend and Produce)}{\rtlch\fcs1 \af1 \ltrch\fcs0 \f1\insrsid2380224\charrsid2380224 ]
+%[}{\rtlch\fcs1 \af1\afs24 \ltrch\fcs0 \b\f1\fs24\cf2\insrsid2380224\charrsid2380224 Else}{\rtlch\fcs1 \af1\afs24 \ltrch\fcs0 \b\f1\fs24\insrsid2380224\charrsid2380224 ]
+%[TitleCase(}{\rtlch\fcs1 
+\af0\afs24 \ltrch\fcs0 \fs24\cf2\insrsid2380224\charrsid2380224 JW_Atty_Pros_Active.FullName)}{\rtlch\fcs1 \af0\afs24 \ltrch\fcs0 \fs24\cf1\insrsid2380224\charrsid2380224 ]
+%[UpperCase(}{\rtlch\fcs1 \af0\afs24 \ltrch\fcs0 \fs24\cf2\insrsid2380224\charrsid2380224 kf_Defendant.FullName)}{\rtlch\fcs1 \af0\afs24 \ltrch\fcs0 \fs24\insrsid2380224\charrsid2380224 ]

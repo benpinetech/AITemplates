@@ -1,0 +1,7 @@
+%[ Initials(JW_Atty_Pros_Active.FullName, false) ]
+%[ JW_Atty_Pros_Active.FullName ]
+%[ KF_AttyProsTitle.NameAttributeValue ]
+%[ LowerCase(Initials (JW_CurrentUser.FullName,false)) ]
+%[ Subdocument(Template ]
+%[ Subdocument(Template Address ) ]
+%[ Subdocument(Template to R) ]

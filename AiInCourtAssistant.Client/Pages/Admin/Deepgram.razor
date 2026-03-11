@@ -1,0 +1,60 @@
+﻿@page "/admin/deepgram"
+@using System.Net.Http.Json
+@using Microsoft.AspNetCore.Components.Forms
+@inject HttpClient Http
+
+<h3>Deepgram Settings</h3>
+
+@if (_loading)
+{
+    <p>Loading…</p>
+}
+else
+{
+    <EditForm Model="_vm" OnValidSubmit="Save">
+        <DataAnnotationsValidator />
+        <div class="mb-3">
+            <label class="form-label">API Key</label>
+            <InputText @bind-Value="_vm.ApiKey" class="form-control" />
+            <div class="form-text">Enter your Deepgram API key. We won’t display existing secrets.</div>
+        </div>
+        <button class="btn btn-primary" disabled="@_saving">Save</button>
+        @if (!string.IsNullOrWhiteSpace(_status))
+        {
+            <span class="ms-2">@_status</span>
+        }
+    </EditForm>
+}
+
+@code {
+    private bool _loading = true, _saving = false;
+    private string? _status;
+    private Vm _vm = new();
+
+    private sealed class Vm { public string ApiKey { get; set; } = ""; }
+    private sealed class Meta { public bool configured { get; set; } public string? last4 { get; set; } }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var meta = await Http.GetFromJsonAsync<Meta>("api/admin/deepgram");
+            _status = meta?.configured == true
+                ? $"A key is already configured (…{meta!.last4})."
+                : "No key configured yet.";
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task Save()
+    {
+        _saving = true; _status = null;
+        try
+        {
+            var res = await Http.PostAsJsonAsync("api/admin/deepgram", new { value = _vm.ApiKey });
+            _status = res.IsSuccessStatusCode ? "Saved." : "Save failed: " + await res.Content.ReadAsStringAsync();
+            _vm.ApiKey = ""; // don’t leave secrets in the box
+        }
+        finally { _saving = false; }
+    }
+}

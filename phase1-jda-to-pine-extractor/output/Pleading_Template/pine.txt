@@ -1,0 +1,7 @@
+@[builtin.today.FormatDate(preset2)]
+@[Prosecutor.first.FormatName(F L).SetCasing(Title)]
+@[ProsecutorBarNum.first.Number]
+@[ProsecutorEmail.first.EmailAddress]
+@[ProsecutorPhone.first.PhoneNumber.FormatPhoneNumber()]
+@[ProsNum.first.Number]
+@[Respondent.first.FormatName(F L).SetCasing(Title)]

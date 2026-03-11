@@ -1,0 +1,3 @@
+%[ Subdocument(Template ]
+%[ Subdocument(Template Address ) ]
+%[TitleCase( JW_Defendant.FullName) ]

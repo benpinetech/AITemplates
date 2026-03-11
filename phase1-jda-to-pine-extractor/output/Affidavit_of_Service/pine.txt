@@ -1,0 +1,6 @@
+@[cu.FormatName(F}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf1\kerning0\insrsid7429494  }{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf1\kerning0\insrsid7429494\charrsid7429494 L)]
+@[Prosecutor.first.FormatName(F L).SetCasing(Title)]
+@[ProsecutorBarNum.first.Number]
+@[ProsecutorPhone.first.PhoneNumber.FormatPhoneNumber()]
+@[ProsNum.first.Number]
+@[Respondent.first.FormatName(F L).SetCasing(Title)]

@@ -1,0 +1,7 @@
+%[ JW_CurrentUser.FullName ]
+%[ JW_Defendant.MrMs ]
+%[ LowerCase(Initials (JW_CurrentUser.FullName,false)) ]
+%[ Subdocument(Template ]
+%[ Subdocument(Template Address ) ]
+%[ Subdocument(Template CPF to C ) ]
+%[ TitleCase( JW_Defendant.LastName ) ]

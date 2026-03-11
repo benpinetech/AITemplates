@@ -1,0 +1,6 @@
+%[ Else ]
+%[ EndForEach ]
+%[ EndIf ]
+%[ ForEach(E IN Cust_FutureCourtEvents2) ]
+%[ If(Cust_FutureCourtEvents2.EventTypeCode = INQUI) ]
+%[ Subdocument(Subdocs ]

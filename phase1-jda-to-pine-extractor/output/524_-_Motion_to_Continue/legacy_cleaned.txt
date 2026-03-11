@@ -1,0 +1,6 @@
+%[ Else ]
+%[ EndIf ]
+%[ If(MotionToContinue.YesNo) ]
+%[ JW_Atty_Pros_Active.FullName ]
+%[ Subdocument(Subdocs ]
+%[ Subdocument(SubDocs ]

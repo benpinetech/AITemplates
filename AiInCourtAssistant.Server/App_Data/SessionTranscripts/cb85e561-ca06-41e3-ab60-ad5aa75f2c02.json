@@ -1,0 +1,51 @@
+{
+  "sessionId": "cb85e561-ca06-41e3-ab60-ad5aa75f2c02",
+  "tenantId": "00000000-0000-0000-0000-000000000000",
+  "courtroom": "CRTA",
+  "docketDate": "2025-09-03",
+  "status": "Complete",
+  "chunks": [
+    {
+      "eventId": 0,
+      "caseId": 0,
+      "confidence": 0.6,
+      "notesSummary": "Summary: FTA noted; bench warrant issued; next date 10/07.",
+      "transcriptExcerpt": "Calling case 24-CR-00123 State v. Doe. Defendant failed to appear.",
+      "suggestions": [
+        {
+          "kind": "FTA",
+          "title": "Consider Bench Warrant",
+          "body": "Detected failed to appear",
+          "confidence": 0.94
+        },
+        {
+          "kind": "SetNextDate",
+          "title": "Set next date 10/07",
+          "body": "Detected next date October 7th",
+          "confidence": 0.88
+        }
+      ],
+      "segments": [
+        {
+          "speaker": "JUDGE",
+          "startMs": 0,
+          "endMs": 6000,
+          "text": "Calling case 24-CR-00123 State v. Doe. Defendant failed to appear."
+        },
+        {
+          "speaker": "PROSECUTOR",
+          "startMs": 6000,
+          "endMs": 14000,
+          "text": "Request bench warrant and set next date October 7th."
+        },
+        {
+          "speaker": "JUDGE",
+          "startMs": 14000,
+          "endMs": 18000,
+          "text": "Bench warrant issued. Next date 10/07."
+        }
+      ]
+    }
+  ],
+  "error": null
+}

@@ -1,0 +1,7 @@
+%[ AddHour(, ) ]
+%[ AddMinute(, ) ]
+%[ CurrentDate() ]
+%[ JW_CurrentUser.FullName ]
+%[ JW_CurrentUser.Title ]
+%[ Subdocument(Template ]
+%[ UpperCase(JW_CurrentUser.FullName) ]

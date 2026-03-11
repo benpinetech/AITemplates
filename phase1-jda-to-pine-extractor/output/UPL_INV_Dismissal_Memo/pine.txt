@@ -1,0 +1,6 @@
+@[builtin.today.FormatDate(preset1)]
+@[Complainant.first.FormatName(F L).SetCasing(Title)]
+@[Investigator.first.FormatName(F L).SetCasing(Title)]
+@[Prosecutor.first.FormatName(F L).SetCasing(Title)]
+@[ProsNum.first.Number]
+@[Respondent.first.FormatName(F L).SetCasing(Title)]

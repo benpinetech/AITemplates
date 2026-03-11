@@ -1,0 +1,20 @@
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\b\f0\cf2\kerning0\insrsid15340489\charrsid15340489 Else}{\rtlch\fcs1 \af0 \ltrch\fcs0 \b\f0\kerning0\insrsid15340489\charrsid15340489 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\b\f0\cf2\kerning0\insrsid15340489\charrsid15340489 ElseIf(Subpoena.SubpoenaTo=Attend and Produce)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \b\f0\kerning0\insrsid15340489\charrsid15340489 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \b\f0\cf2\kerning0\insrsid15340489\charrsid15340489 EndIf}{\rtlch\fcs1 \af0 
+\ltrch\fcs0 \b\f0\kerning0\insrsid15340489\charrsid15340489 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \b\f0\cf2\kerning0\insrsid15340489\charrsid15340489 If(Subpoena.SubpoenaTo=Attend)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \b\f0\kerning0\insrsid15340489\charrsid15340489 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f0\cf2\kerning0\insrsid15340489\charrsid15340489 If(Subpoena.SubpoenaTo=Attend)}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f0\kerning0\insrsid15340489\charrsid15340489 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f0\cf2\kerning0\insrsid15340489\charrsid15340489 kf_Atty_Pros_Active_AgencyNum.CaseAgencyNumber}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f0\kerning0\insrsid15340489\charrsid15340489 ]
+%[}{\rtlch\fcs1 \af1\afs20 \ltrch\fcs0 
+\f1\fs20\cf2\kerning0\insrsid15340489\charrsid15340489 Else}{\rtlch\fcs1 \af1\afs20 \ltrch\fcs0 \f1\fs20\kerning0\insrsid15340489\charrsid15340489 ]
+%[}{\rtlch\fcs1 \af1\afs20 \ltrch\fcs0 \b\f1\fs20\cf2\kerning0\insrsid15340489\charrsid15340489 EndIf}{\rtlch\fcs1 \af1\afs20 \ltrch\fcs0 \b\f1\fs20\kerning0\insrsid15340489\charrsid15340489 ]
+%[}{\rtlch\fcs1 \af1\afs20 \ltrch\fcs0 \f1\fs20\cf2\kerning0\insrsid15340489\charrsid15340489 
+ElseIf(Subpoena.SubpoenaTo=Attend and Produce)}{\rtlch\fcs1 \af1\afs20 \ltrch\fcs0 \f1\fs20\kerning0\insrsid15340489\charrsid15340489 ]
+%[TitleCase(}{\rtlch\fcs1 \af0 
+\ltrch\fcs0 \f0\cf2\kerning0\insrsid15340489\charrsid15340489 KF_Atty_Pros_Active.FullName)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f0\cf1\kerning0\insrsid15340489\charrsid15340489 ]
+%[UpperCase(}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f0\cf2\kerning0\insrsid15340489\charrsid15340489 kf_Defendant.FullName)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f0\kerning0\insrsid15340489\charrsid15340489 ]

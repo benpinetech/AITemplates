@@ -1,0 +1,6 @@
+@[builtin.today.FormatDate(preset1)]
+@[CreateVar(@ProsNum, @CaseAgency.GetByQuery("CaseID":@[builtin.CaseID]
+@[CreateVar(@Respondent,@CaseInvolvement.GetByQuery("CaseID":@[builtin.CaseID]
+@[ProsNum.first.Number]
+@[Respondent.first.NameFirstName]
+@[Respondent.first.NameLastName]

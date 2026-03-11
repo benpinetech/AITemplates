@@ -1,0 +1,26 @@
+{
+  "sessionId": "1fd30003-3595-47d8-8743-e56f8340bf04",
+  "tenantId": "00000000-0000-0000-0000-000000000000",
+  "courtroom": "Courtroom B",
+  "docketDate": "2025-11-19",
+  "status": "Complete",
+  "chunks": [
+    {
+      "eventId": 101316,
+      "caseId": 100262,
+      "confidence": 0.6,
+      "notesSummary": "1) The excerpt provided does not contain any information to summarize, as it is empty.\n\n2) \n\u0060\u0060\u0060\nPlea: -\nFinding/Disposition: -\nFine/Fees: -\nNext Date: -\nConditions: -\nAction/Items: -\n\u0060\u0060\u0060",
+      "transcriptExcerpt": "",
+      "suggestions": [],
+      "segments": [
+        {
+          "speaker": "Case number 19TC207305. Scott g Loggins. Charge speeding 20 over. Mister Loggins, how do you wish to plead? Guilty, your honor. State recommends a $150 fine, $90 court costs. Court accepts the plea. Defendant pleads guilty. Fine, $150 plus cost. Due in thirty days. No jail. You\u0027ll receive payment instructions before you leave. Anything else? No, your honor. Next case. Status is completed. 19TI207296. Austin j Wilson. No proof of insurance. Mister Wilson, do you have proof today? I purchased a policy yesterday, but I don\u0027t have the card. State is willing to review review for compliance. Alright. Matter continued for state review. Set next court date, 10/21/2025 at 09:00AM. Bring proof then. Noted, your honor. Event status continued. 19TC207285. Stephanie McGray speeding 15 over. First call, no response. Second call for miss McGray, no response. State moved for bench warrant. The record will reflect the defendant failed to appear. Motion for granted bench warrant to issue with standard bond. Event status, failure to appear. Case status, debench warrant. 19TI207276. Barbara Craig. Expired registration. Miss Craig, have you renewed? Renewal is in process. State request is short continuance for proof. Granted. Matter continued. Set status review date 11/04/2025 at 09:00AM. Bring proof of renewal. Noted. Event status continued. 18TI207256, Roger Ullman. Equipment violation, broken taillight. Proof of correction? Yes, your honor. Receipt in a photo. State moves to dismiss upon compliance. Granted case dismissed on compliance. Event status completed. 18TC207245. Anna Walter. Careless driving. Miss Walter. Plea, guilty. State recommends a $200 fine traffic school option. The court accepts the plea. Defendant pleads guilty. Fine $200 plus cost. Traffic school authorized within sixty days. Completion will avoid points. Event status completed. 18TI207236. Jeffrey Parsons. No insurance. Diversion offer. Proof of six month policy and administrative fee. Mister Parsons, do you accept diversion? Yes, your honor. Accepted. Matter continued for diversion compliance. Set review, 12/09/2025 at 09:00AM. Status is continued. 18TC207225. Camille Constable. Failure to yield. State moves to dismiss. Officer unavailable and VO inclusive. Motion granted. Case dismissed. Event status completed. 18, TI207216. Whitney w Sally speeding 10 over. First call. No response. Second call for miss Sally. No response. The record will reflect the defendant failed to appear, And that concludes the docket.",
+          "startMs": 0,
+          "endMs": 0,
+          "text": ""
+        }
+      ]
+    }
+  ],
+  "error": null
+}

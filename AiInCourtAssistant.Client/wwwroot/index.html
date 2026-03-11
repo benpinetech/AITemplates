@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AiInCourtAssistant.Client</title>
+    <base href="/" />
+    <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <link href="AiInCourtAssistant.Client.styles.css" rel="stylesheet" />
+</head>
+<body>
+    <div id="app">
+        <svg class="loading-progress"><circle r="40%" cx="50%" cy="50%" /><circle r="40%" cx="50%" cy="50%" /></svg>
+        <div class="loading-progress-text"></div>
+    </div>
+
+    <div id="blazor-error-ui">
+        An unhandled error has occurred.
+        <a href="." class="reload">Reload</a>
+        <span class="dismiss">🗙</span>
+    </div>
+
+    <!-- Server origin + hub url -->
+    <script>
+        const sameOrigin = location.port === "7049" || location.hostname !== "localhost";
+        const defaultOrigin = location.origin;
+        const configured = "https://localhost:7049"; // change if your Server runs elsewhere
+        window.__serverOrigin = sameOrigin ? defaultOrigin : configured;
+        window.__hubUrl = window.__serverOrigin + "/hubs/live-transcribe";
+    </script>
+
+    <!-- SignalR (8.x to match .NET 8 server) -->
+    <script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@8.0.7/dist/browser/signalr.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr-protocol-msgpack@8.0.7/dist/browser/signalr-protocol-msgpack.min.js"></script>
+
+    <!-- Safe stub (so callers don't explode if the script fails) -->
+    <script>
+        if (!window.liveListen) {
+            const noop = () => { };
+            window.liveListen = {
+                toggle: noop,
+                start: noop,
+                stop: noop,
+                switchEvent: noop,
+                registerAiHandler: noop
+            };
+        }
+    </script>
+
+    <!-- Load the server copy of live-listen.js exactly once -->
+    <script>
+        (function () {
+            if (window.__liveListenLoaded) return;
+            window.__liveListenLoaded = true;
+
+            // Load from the server root since the file is at /wwwroot/live-listen.js
+            const src = window.__serverOrigin + "/live-listen.js?v=" + Date.now();
+
+            const s = document.createElement("script");
+            s.src = src;
+            s.onload = () => console.log("[bootstrap] loaded", src);
+            s.onerror = () => console.error("[bootstrap] failed", src);
+            document.body.appendChild(s);
+        })();
+    </script>
+    <script>
+        // Minimal DOM-router used by live-listen.js
+        window.liveRouter = {
+            focusRow(eventId) {
+                const row = document.getElementById(`row-${eventId}`);
+                if (row) {
+                    row.classList.add("table-warning");
+                    row.scrollIntoView({ behavior: "smooth", block: "center" });
+                    // remove highlight from others
+                    document.querySelectorAll("tr.table-warning").forEach(tr => {
+                        if (tr.id !== `row-${eventId}`) tr.classList.remove("table-warning");
+                    });
+                }
+            },
+
+            updateTranscript(eventId, text, isFinal, confidence) {
+                const box = document.getElementById(`transcript-${eventId}`);
+                if (!box) return;
+
+                // Strategy: keep a working draft in data-* attribute
+                const key = "liveDraft";
+                const prev = box.dataset[key] || "";
+                const next = isFinal ? (prev ? prev + " " + text : text) : (text || "");
+                box.dataset[key] = next;
+
+                // Render: if final, put the accumulated text; if partial, show partial in the box
+                box.value = isFinal ? box.dataset[key] : next;
+                // Keep the caret at end for nicer UX
+                box.selectionStart = box.selectionEnd = box.value.length;
+            },
+
+            pushSuggestions(eventId, suggestions) {
+                // Optional: raise a lightweight event Blazor can handle if you want to surface suggestions in the UI
+                // For now, just log them so you see they're arriving:
+                console.log("[liveRouter] suggestions for", eventId, suggestions);
+            }
+        };
+    </script>
+
+    <!-- Boot Blazor last -->
+    <script src="_framework/blazor.webassembly.js"></script>
+</body>
+</html>

@@ -1,0 +1,510 @@
+@page "/template-migration"
+@using System.Threading
+@using Microsoft.AspNetCore.Components.Forms
+@using AiInCourtAssistant.Shared.Models
+@inject AiInCourtAssistant.Client.Services.TemplateMigrationClient MigrationClient
+@inject AiInCourtAssistant.Client.Services.LoginService LoginService
+@inject IJSRuntime JS
+
+<h3>Template Migration (Legacy to Pine)</h3>
+
+@if (string.IsNullOrEmpty(LoginService.GetToken()))
+{
+    <p class="text-warning">Please log in to use migration and save/preview.</p>
+}
+
+<ul class="nav nav-tabs mb-3" role="tablist">
+    <li class="nav-item">
+        <button type="button" class="nav-link @(_activeTab == "migrate" ? "active" : "")" @onclick='() => _activeTab = "migrate"'>Migrate / Generate</button>
+    </li>
+    <li class="nav-item">
+        <button type="button" class="nav-link @(_activeTab == "addfillpoints" ? "active" : "")" @onclick='() => _activeTab = "addfillpoints"'>Add Fillpoints to Form</button>
+    </li>
+</ul>
+
+@if (_activeTab == "addfillpoints")
+{
+    <div class="mb-3 border rounded p-3 bg-light">
+        <h5>Add Fillpoints to Existing Form</h5>
+        <p class="text-muted small">Upload an RTF/Word form or paste its text. AI will suggest where to insert Pine fillpoints (@@[ ... ]).</p>
+        <label class="form-label">Existing form: upload RTF or paste text</label>
+        <InputFile class="form-control" accept=".rtf,.docx,text/rtf" OnChange="OnFormFileSelected" />
+        <textarea @bind="_formInput"
+                  class="form-control mt-2 font-monospace"
+                  rows="6"
+                  placeholder="Paste form text or upload RTF above."></textarea>
+        <button class="btn btn-info mt-2" @onclick="SuggestFillpointsAsync" disabled="@(_isSuggesting || string.IsNullOrWhiteSpace(_formInput))">
+            @if (_isSuggesting) { <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> }
+            Suggest Fillpoints
+        </button>
+    </div>
+}
+
+@if (_activeTab == "migrate")
+{
+<div class="mb-3 border rounded p-3 bg-light">
+    <label class="form-label">Describe new template in natural language</label>
+    <textarea @bind="_nlDescription"
+              class="form-control font-monospace"
+              rows="3"
+              placeholder="e.g., Generate a Utah subpoena for a witness with address and phone"></textarea>
+    <div class="mt-2 d-flex flex-wrap gap-2">
+        <button class="btn btn-info" @onclick="GenerateFromDescriptionAsync" disabled="@_isGenerating">
+            @if (_isGenerating) { <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> }
+            Generate Pine from Description
+        </button>
+        <button class="btn btn-outline-info" @onclick="GenerateFromLegacyAsync" disabled="@(_isGenerating || string.IsNullOrWhiteSpace(_legacyInput))">
+            @if (_isGenerating) { <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> }
+            Generate from Legacy
+        </button>
+    </div>
+</div>
+
+<div class="mb-3 d-flex flex-wrap align-items-center gap-3">
+    <InputFile id="legacyRtfUpload" class="d-none" accept=".rtf,text/rtf" OnChange="OnFileSelected" />
+    <label for="legacyRtfUpload" class="btn btn-outline-secondary mb-0">Upload Legacy RTF</label>
+    <span class="text-muted small">@(string.IsNullOrWhiteSpace(_legacyInput) ? "Upload legacy RTF to migrate" : "Legacy file loaded")</span>
+    <div class="form-check mb-0">
+        <input type="checkbox" class="form-check-input" id="migrateFullRtf" @bind="_migrateFullRtf" />
+        <label class="form-check-label" for="migrateFullRtf">Migrate Full RTF</label>
+    </div>
+    <button class="btn btn-primary" @onclick="MigrateAsync" disabled="@(_isMigrating || string.IsNullOrWhiteSpace(_legacyInput))">
+        @if (_isMigrating) { <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> }
+        @(_isMigrating ? "Migrating…" : "Migrate to Pine")
+    </button>
+    <button type="button" class="btn btn-outline-secondary" @onclick="ClearAll" title="Reset upload, result, and panes">Clear All</button>
+</div>
+}
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
+@if (!string.IsNullOrEmpty(_saveSuccess))
+{
+    <div class="alert alert-success">@_saveSuccess</div>
+}
+
+@if (_result != null)
+{
+    <div class="row migration-panes">
+        <div class="col-md-6">
+            <h5>Legacy <span class="badge bg-secondary">read-only</span></h5>
+            @if (!string.IsNullOrEmpty(_result.LegacyHtml))
+            {
+                <div class="migration-rendered">@((MarkupString)_result.LegacyHtml!)</div>
+            }
+            else
+            {
+                <textarea class="form-control font-monospace migration-fallback" rows="14" readonly>@_result.LegacyText</textarea>
+            }
+        </div>
+        <div class="col-md-6">
+            <h5>Migrated Pine @(_migratedEditMode ? "(editing)" : "(editable)")</h5>
+            @if (!_migratedEditMode && !string.IsNullOrEmpty(_migratedHtml))
+            {
+                <div class="migration-rendered">@((MarkupString)_migratedHtml)</div>
+                <button class="btn btn-sm btn-outline-secondary mt-2" @onclick="ToggleMigratedEdit">Edit migrated text</button>
+            }
+            else
+            {
+                <textarea @bind="_migratedText"
+                          class="form-control font-monospace @(_result.ReviewTokens.Count > 0 ? "border-danger migration-textarea-has-review" : "")"
+                          rows="14"></textarea>
+                <div class="mt-2 d-flex flex-wrap align-items-center gap-2">
+                    <button class="btn btn-sm btn-primary" @onclick="UpdateMigratedPreview" disabled="@_isUpdatingPreview" title="Re-render migrated text as formatted HTML with fillpoint highlighting">
+                        @if (_isUpdatingPreview) { <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> }
+                        Update preview
+                    </button>
+                    @if (_migratedEditMode)
+                    {
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="ToggleMigratedEdit">Done editing</button>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (_result.ReviewTokens.Count > 0)
+    {
+        <div class="alert alert-warning mt-2">
+            <strong>REVIEW:</strong> Unmapped or uncertain tokens — fix manually or add synonyms:
+            <ul class="mb-0 mt-1">
+                @foreach (var token in _result.ReviewTokens)
+                {
+                    <li><code>@token</code></li>
+                }
+            </ul>
+        </div>
+    }
+
+    @if (_suggestedChanges != null && _suggestedChanges.Count > 0)
+    {
+        <div class="alert alert-info mt-2">
+            <strong>Inserted fillpoints:</strong>
+            <ul class="mb-0 mt-1">
+                @foreach (var change in _suggestedChanges)
+                {
+                    <li>@change</li>
+                }
+            </ul>
+        </div>
+    }
+
+    <div class="mt-3 d-flex flex-wrap gap-2 align-items-center">
+        <button class="btn btn-success" @onclick="SaveTemplateAsync" disabled="@_isSaving">
+            @if (_isSaving) { <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> }
+            @(_isSaving ? "Saving…" : "Save as Pine Template")
+        </button>
+        <div class="input-group" style="max-width: 220px;">
+            <span class="input-group-text">Case ID</span>
+            <input type="number" class="form-control" @bind="_previewCaseId" placeholder="e.g. 12345" />
+        </div>
+        <button class="btn btn-outline-primary" @onclick="PreviewAsync" disabled="@_isPreviewing">
+            @if (_isPreviewing) { <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> }
+            @(_isPreviewing ? "Loading…" : "Preview")
+        </button>
+    </div>
+
+    @if (_previewError != null)
+    {
+        <div class="alert alert-danger mt-2">@_previewError</div>
+    }
+    @if (_previewContentType != null && _previewBytes != null)
+    {
+        <div class="mt-2">
+            @if (_previewContentType.StartsWith("text/html", StringComparison.OrdinalIgnoreCase))
+            {
+                <h5>Preview (HTML)</h5>
+                <iframe src="@_previewDataUrl" class="w-100 border" style="min-height: 400px;"></iframe>
+            }
+            else
+            {
+                <p>Preview returned <code>@_previewContentType</code> — <button class="btn btn-sm btn-outline-secondary" @onclick="DownloadPreview">Download</button></p>
+            }
+        </div>
+    }
+}
+
+@code {
+    private string _activeTab = "migrate";
+    private string _legacyInput = "";
+    private string _formInput = "";
+    private bool _migrateFullRtf = true;
+    private string _nlDescription = "";
+    private string _migratedText = "";
+    private MigrateResultDto? _result;
+    private List<string> _suggestedChanges = new();
+    private string? _error;
+    private string? _saveSuccess;
+    private bool _isMigrating;
+    private bool _isSaving;
+    private bool _isPreviewing;
+    private int _previewCaseId = 0;
+    private string? _previewError;
+    private byte[]? _previewBytes;
+    private string? _previewContentType;
+    private string? _previewDataUrl;
+    private string? _migratedHtml;
+    private bool _migratedEditMode;
+    private bool _isUpdatingPreview;
+    private bool _isGenerating;
+    private bool _isSuggesting;
+    private void ClearAll()
+    {
+        _legacyInput = "";
+        _result = null;
+        _migratedText = "";
+        _migratedHtml = null;
+        _migratedEditMode = false;
+        _error = null;
+        _saveSuccess = null;
+        _suggestedChanges = new List<string>();
+    }
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        _error = null;
+        try
+        {
+            var file = e.File;
+            if (file.Size > 2 * 1024 * 1024) { _error = "File too large (max 2 MB)."; return; }
+            using var stream = file.OpenReadStream(maxAllowedSize: 2 * 1024 * 1024);
+            using var reader = new StreamReader(stream);
+            var raw = await reader.ReadToEndAsync();
+            _legacyInput = raw.TrimStart('\uFEFF');
+        }
+        catch (Exception ex)
+        {
+            _error = "File read failed: " + ex.Message;
+        }
+    }
+
+    private async Task OnFormFileSelected(InputFileChangeEventArgs e)
+    {
+        _error = null;
+        try
+        {
+            var file = e.File;
+            if (file.Size > 2 * 1024 * 1024) { _error = "File too large (max 2 MB)."; return; }
+            using var stream = file.OpenReadStream(maxAllowedSize: 2 * 1024 * 1024);
+            using var reader = new StreamReader(stream);
+            var raw = await reader.ReadToEndAsync();
+            _formInput = raw.TrimStart('\uFEFF');
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _error = "File read failed: " + ex.Message;
+        }
+    }
+
+    private async Task SuggestFillpointsAsync()
+    {
+        _error = null;
+        _suggestedChanges = new List<string>();
+        if (string.IsNullOrWhiteSpace(_formInput)) { _error = "Paste form text or upload an RTF file."; return; }
+        _isSuggesting = true;
+        try
+        {
+            var (suggestedText, changes, err) = await MigrationClient.SuggestFillpointsAsync(_formInput);
+            if (err != null) { _error = err; return; }
+            if (!string.IsNullOrEmpty(suggestedText))
+            {
+                _migratedText = suggestedText;
+                _migratedHtml = null;
+                _migratedEditMode = true;
+                _suggestedChanges = (changes ?? Array.Empty<string>()).ToList();
+                _result = new MigrateResultDto
+                {
+                    LegacyText = _formInput.Length > 2000 ? _formInput.Substring(0, 2000) + "\n…" : _formInput,
+                    MigratedText = suggestedText,
+                    Fillpoints = new List<FillpointPairDto>(),
+                    ReviewTokens = new List<string>()
+                };
+                _activeTab = "migrate";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = "Suggest fillpoints failed: " + ex.Message;
+        }
+        finally
+        {
+            _isSuggesting = false;
+        }
+    }
+
+    private async Task MigrateAsync()
+    {
+        _error = null;
+        _result = null;
+        if (string.IsNullOrWhiteSpace(_legacyInput)) { _error = "Enter or upload legacy content."; return; }
+
+        _isMigrating = true;
+        try
+        {
+            bool looksRtf = _legacyInput.TrimStart('\uFEFF').TrimStart().StartsWith("{\\rtf", StringComparison.OrdinalIgnoreCase);
+            var result = await MigrationClient.MigrateAsync(
+                looksRtf ? null : _legacyInput,
+                looksRtf ? _legacyInput : null,
+                _migrateFullRtf);
+            if (result == null)
+            {
+                _error = "Migration request failed (check auth or server).";
+                return;
+            }
+            _result = result;
+            _migratedText = result.MigratedText;
+            _migratedHtml = result.MigratedHtml;
+            _migratedEditMode = false;
+            _suggestedChanges = new List<string>();
+        }
+        catch (Exception ex)
+        {
+            _error = "Migration error: " + ex.Message;
+        }
+        finally
+        {
+            _isMigrating = false;
+        }
+    }
+
+    private async Task SaveTemplateAsync()
+    {
+        if (_result == null || string.IsNullOrWhiteSpace(_migratedText)) return;
+        _error = null;
+        _saveSuccess = null;
+        _isSaving = true;
+        try
+        {
+            var body = new { content = _migratedText, name = "Migrated template" };
+            var (ok, err) = await MigrationClient.SaveTemplateAsync(body);
+            if (ok)
+            {
+                _error = null;
+                _saveSuccess = "Template save request sent. Check Pine for the new template.";
+            }
+            else
+                _error = "Save failed: " + (err ?? "unknown");
+        }
+        catch (Exception ex)
+        {
+            _error = "Save error: " + ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task PreviewAsync()
+    {
+        int caseId = _previewCaseId;
+        if (caseId <= 0) { _previewError = "Enter a valid Case ID."; return; }
+        _previewError = null;
+        _previewBytes = null;
+        _previewContentType = null;
+        _isPreviewing = true;
+        try
+        {
+            var (ok, bytes, contentType, err) = await MigrationClient.PreviewAsync(caseId);
+            if (ok && bytes != null)
+            {
+                _previewBytes = bytes;
+                _previewContentType = contentType;
+                _previewDataUrl = (contentType?.StartsWith("text/html", StringComparison.OrdinalIgnoreCase) == true)
+                    ? "data:text/html;base64," + Convert.ToBase64String(bytes)
+                    : null;
+            }
+            else
+                _previewError = err ?? "Preview failed.";
+        }
+        catch (Exception ex)
+        {
+            _previewError = ex.Message;
+        }
+        finally
+        {
+            _isPreviewing = false;
+        }
+    }
+
+    private async Task DownloadPreview()
+    {
+        if (_previewBytes == null) return;
+        try
+        {
+            var base64 = Convert.ToBase64String(_previewBytes);
+            await JS.InvokeVoidAsync("eval", $"var a = document.createElement('a'); a.href = 'data:{_previewContentType};base64,{base64}'; a.download = 'preview.html'; a.click();");
+        }
+        catch { }
+    }
+
+    private void ToggleMigratedEdit()
+    {
+        _migratedEditMode = !_migratedEditMode;
+    }
+
+    private async Task GenerateFromDescriptionAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_nlDescription)) { _error = "Enter a description."; return; }
+        _isGenerating = true;
+        try
+        {
+            var (generatedText, err) = await MigrationClient.GeneratePineAsync(_nlDescription, false, null);
+            if (err != null) { _error = err; return; }
+            if (!string.IsNullOrEmpty(generatedText))
+            {
+                _migratedText = generatedText;
+                _migratedHtml = null;
+                _migratedEditMode = true;
+                _suggestedChanges = new List<string>();
+                _result = new MigrateResultDto
+                {
+                    LegacyText = _nlDescription,
+                    MigratedText = generatedText,
+                    Fillpoints = new List<FillpointPairDto>(),
+                    ReviewTokens = new List<string>()
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = "Generation error: " + ex.Message;
+        }
+        finally
+        {
+            _isGenerating = false;
+        }
+    }
+
+    private async Task GenerateFromLegacyAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_legacyInput)) { _error = "Upload or paste legacy content first."; return; }
+        _isGenerating = true;
+        try
+        {
+            var description = string.IsNullOrWhiteSpace(_nlDescription) ? "Generate a Pine template similar to the following legacy document." : _nlDescription;
+            var (generatedText, err) = await MigrationClient.GeneratePineAsync(description, true, _legacyInput);
+            if (err != null) { _error = err; return; }
+            if (!string.IsNullOrEmpty(generatedText))
+            {
+                _migratedText = generatedText;
+                _migratedHtml = null;
+                _migratedEditMode = true;
+                _suggestedChanges = new List<string>();
+                _result = new MigrateResultDto
+                {
+                    LegacyText = _legacyInput.Length > 500 ? _legacyInput.Substring(0, 500) + "…" : _legacyInput,
+                    MigratedText = generatedText,
+                    Fillpoints = new List<FillpointPairDto>(),
+                    ReviewTokens = new List<string>()
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = "Generation error: " + ex.Message;
+        }
+        finally
+        {
+            _isGenerating = false;
+        }
+    }
+
+    private async Task UpdateMigratedPreview()
+    {
+        if (string.IsNullOrWhiteSpace(_migratedText)) return;
+        _isUpdatingPreview = true;
+        try
+        {
+            var html = await MigrationClient.RtfToHtmlAsync(_migratedText);
+            if (!string.IsNullOrEmpty(html))
+            {
+                _migratedHtml = html;
+                _migratedEditMode = false;
+            }
+        }
+        finally
+        {
+            _isUpdatingPreview = false;
+        }
+    }
+}
+
+<style>
+    .migration-rendered { min-height: 500px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; background: white; }
+    .migration-preview { min-height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; background: white; }
+    /* Legacy fillpoints %[ ... ] — yellow */
+    .migration-rendered .fillpoint-legacy, .migration-preview .fillpoint-legacy { background-color: #ffeb3b; padding: 0 2px; border-radius: 2px; }
+    /* Pine fillpoints @@[ ... ] — light blue */
+    .migration-rendered .fillpoint-pine, .migration-preview .fillpoint-pine { background-color: #90caf9; padding: 0 2px; border-radius: 2px; }
+    /* REVIEW tokens in rendered HTML — red */
+    .migration-rendered .review-highlight, .migration-preview .review-highlight { background-color: #ffcdd2; padding: 0 2px; border-radius: 2px; }
+    .migration-plain { white-space: pre-wrap; font-family: var(--bs-font-monospace); }
+    /* Migrated textarea when it contains REVIEW tokens */
+    .migration-textarea-has-review { background-color: #ffebee !important; }
+</style>

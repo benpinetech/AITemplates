@@ -1,0 +1,5 @@
+@[builtin.today.FormatDate(preset1)]
+@[cu.FormatName(F}{\rtlch\fcs1 \af0 \ltrch\fcs0 \ul\insrsid12863844  }{\rtlch\fcs1 \af0 \ltrch\fcs0 \ul\insrsid12863844\charrsid12863844 L)]
+@[Prosecutor.first.FormatName(F L).SetCasing(Title)]
+@[ProsNum.first.Number]
+@[Respondent.first.FormatName(F L).SetCasing(Title)]

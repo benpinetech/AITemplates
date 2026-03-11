@@ -1,0 +1,262 @@
+{
+  "sessionId": "7e1fdcb4-07fb-4840-8580-2cce31ffca0a",
+  "tenantId": "00000000-0000-0000-0000-000000000000",
+  "courtroom": "CRTA",
+  "docketDate": "2025-09-03",
+  "status": "Complete",
+  "chunks": [
+    {
+      "eventId": 101306,
+      "caseId": 96177,
+      "confidence": 0.9,
+      "notesSummary": "Matter continued; next court date October 1st at 9 a.",
+      "transcriptExcerpt": "Case 18-CM-207272, Malone Allen.\r\nThe matter is continued.\r\nNext court date is October 1st at 9 a.m.",
+      "suggestions": [
+        {
+          "kind": "AI",
+          "title": "Update event status = CONT",
+          "body": "Matter continued.",
+          "confidence": 0.85
+        },
+        {
+          "kind": "AI",
+          "title": "Set next court date October 1st at 9 a",
+          "body": "Enter the date announced on the record.",
+          "confidence": 0.9
+        }
+      ],
+      "segments": [
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Case 18-CM-207272, Malone Allen."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "The matter is continued."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Next court date is October 1st at 9 a.m."
+        }
+      ]
+    },
+    {
+      "eventId": 101305,
+      "caseId": 96176,
+      "confidence": 0.9,
+      "notesSummary": "FTA noted; bench warrant issued.",
+      "transcriptExcerpt": "Case 18-CF-207271, William Flores.\r\nThe defendant failed to appear.\r\nFTA is noted.\r\nA bench warrant is issued.",
+      "suggestions": [
+        {
+          "kind": "AI",
+          "title": "Update event status = FTA",
+          "body": "Heard \u0027failed to appear\u0027.",
+          "confidence": 0.9
+        },
+        {
+          "kind": "AI",
+          "title": "Update case status = Bench Warrant",
+          "body": "Bench warrant ordered on the record.",
+          "confidence": 0.9
+        }
+      ],
+      "segments": [
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Case 18-CF-207271, William Flores."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "The defendant failed to appear."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "FTA is noted."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "A bench warrant is issued."
+        }
+      ]
+    },
+    {
+      "eventId": 101304,
+      "caseId": 96173,
+      "confidence": 0.9,
+      "notesSummary": "Status review set.",
+      "transcriptExcerpt": "Case 18-CP-207268, Jenna McClain.\r\nThe case is heard.\r\nStatus review set.\r\nNo further orders.",
+      "suggestions": [
+        {
+          "kind": "AI",
+          "title": "Enter status-review date",
+          "body": "Status review set on the record.",
+          "confidence": 0.85
+        }
+      ],
+      "segments": [
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Case 18-CP-207268, Jenna McClain."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "The case is heard."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Status review set."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "No further orders."
+        }
+      ]
+    },
+    {
+      "eventId": 101303,
+      "caseId": 96172,
+      "confidence": 0.9,
+      "notesSummary": "Plea: guilty entered; case completed.",
+      "transcriptExcerpt": "Case 18-CC-207267, Kelly Bergen.\r\nThe defendant entered a guilty plea.\r\nThe case is completed today.",
+      "suggestions": [
+        {
+          "kind": "AI",
+          "title": "Enter plea = Guilty",
+          "body": "Plea announced on the record.",
+          "confidence": 0.95
+        },
+        {
+          "kind": "AI",
+          "title": "Mark case Completed",
+          "body": "Disposition indicated in transcript.",
+          "confidence": 0.9
+        }
+      ],
+      "segments": [
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Case 18-CC-207267, Kelly Bergen."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "The defendant entered a guilty plea."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "The case is completed today."
+        }
+      ]
+    },
+    {
+      "eventId": 101302,
+      "caseId": 96171,
+      "confidence": 0.9,
+      "notesSummary": "Bench warrant remains; no further action.",
+      "transcriptExcerpt": "Case 18-TI-207266, Rudy Matthews.\r\nBench warrant remains in effect.\r\nNo further action.",
+      "suggestions": [
+        {
+          "kind": "AI",
+          "title": "No action needed",
+          "body": "Bench warrant remains in effect.",
+          "confidence": 0.95
+        }
+      ],
+      "segments": [
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Case 18-TI-207266, Rudy Matthews."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Bench warrant remains in effect."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "No further action."
+        }
+      ]
+    },
+    {
+      "eventId": 101301,
+      "caseId": 96170,
+      "confidence": 0.9,
+      "notesSummary": "Matter continued; next court date November 15th at 1030 a.",
+      "transcriptExcerpt": "Case 18-TC-207265, Wesson Patrick.\r\nThe matter is continued.\r\nNext court date is November 15th at 1030 a.m.\r\nEnd of court session for Courtroom A, September 3rd",
+      "suggestions": [
+        {
+          "kind": "AI",
+          "title": "Update event status = CONT",
+          "body": "Matter continued.",
+          "confidence": 0.85
+        },
+        {
+          "kind": "AI",
+          "title": "Set next court date November 15th at 1030 a",
+          "body": "Enter the date announced on the record.",
+          "confidence": 0.9
+        }
+      ],
+      "segments": [
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Case 18-TC-207265, Wesson Patrick."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "The matter is continued."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "Next court date is November 15th at 1030 a.m."
+        },
+        {
+          "speaker": null,
+          "startMs": 0,
+          "endMs": 0,
+          "text": "End of court session for Courtroom A, September 3rd, 2025."
+        }
+      ]
+    }
+  ],
+  "error": null
+}

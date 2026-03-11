@@ -1,0 +1,57 @@
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f0\cf2\kerning0\insrsid10427476\charrsid10427476 Subdocument(Template\\Letterhead)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f0\kerning0\insrsid10427476\charrsid10427476 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\cf2\kerning0\insrsid10427476\charrsid10427476 Else}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid10427476\charrsid10427476 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\cf2\kerning0\insrsid10427476\charrsid10427476 EndIf}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid10427476\charrsid10427476 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\cf2\kerning0\insrsid10427476\charrsid10427476 FormatDate (CurrentDate(),MMMM d, yyyy)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf1\kerning0\insrsid10427476\charrsid10427476 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\cf2\kerning0\insrsid10427476\charrsid10427476 If}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf1\kerning0\insrsid10427476\charrsid10427476 (}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid10427476\charrsid10427476 
+KF_Atty_Def_Active.FullName.IsEmpty)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf1\kerning0\insrsid10427476\charrsid10427476 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\cf2\kerning0\insrsid10427476\charrsid10427476 Initials(JW_Atty_Pros_Active.FullName, false)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf1\kerning0\insrsid10427476\charrsid10427476 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\cf2\kerning0\insrsid10427476\charrsid10427476 JW_Defendant_Address.StateCode}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid10427476\charrsid10427476 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\cf2\kerning0\insrsid10427476\charrsid10427476 KF_Atty_Def_Active_Address.StateCode}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid10427476\charrsid10427476 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\cf2\kerning0\insrsid10427476\charrsid10427476 KF_Def_NameAttribute.NameAttributeValue}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid10427476\charrsid10427476 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\cf2\kerning0\insrsid10427476\charrsid10427476 KF_NameAttribute.NameAttributeValue}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid10427476\charrsid10427476 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\cf2\kerning0\insrsid10427476\charrsid10427476 MultiSelect(a in JW_Defendant_Address)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid10427476\charrsid10427476 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\cgrid0\insrsid10427476\charrsid10427476 kf_Atty_Pros_Active_AgencyNum.CaseAgencyNumber}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\kerning0\cgrid0\insrsid10427476\charrsid10427476 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid10427476\charrsid10427476 
+JW_Defendant_Address.Zip}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid10427476\charrsid10427476 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid10427476\charrsid10427476 
+KF_Atty_Def_Active_Address.Zip}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid10427476\charrsid10427476 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid10427476\charrsid10427476 EndIf}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid10427476\charrsid10427476 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid10427476\charrsid10427476 EndMultiSelect}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid10427476\charrsid10427476 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid10427476\charrsid10427476 If(JW_Defendant_Address.AddressTypeCode=RBA)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid10427476\charrsid10427476 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid10427476\charrsid10427476 If(KF_Atty_Def_Active_Address.AddressTypeCode=RBA)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid10427476\charrsid10427476 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid10427476\charrsid10427476 JW_Atty_Pros_Active.FullName}{\rtlch\fcs1 \af0 
+\ltrch\fcs0 \f207\cf1\kerning0\insrsid10427476\charrsid10427476 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid10427476\charrsid10427476 JW_Defendant.MrMs}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\cf1\kerning0\insrsid10427476\charrsid10427476 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid10427476\charrsid10427476 KF_Atty_Def_Active.MrMs}{
+\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid10427476\charrsid10427476 ]
+%[}{\rtlch\fcs1 \af0\afs20 \ltrch\fcs0 \f207\cf2\kerning0\insrsid10427476\charrsid10427476 KF_AttyProsTitle.NameAttributeValue}{\rtlch\fcs1 \af0\afs20 \ltrch\fcs0 \f207\kerning0\insrsid10427476\charrsid10427476 ]
+%[}{\rtlch\fcs1 \af31507 \ltrch\fcs0 \cf2\insrsid10427476\charrsid8469522 Subdocument(}{\rtlch\fcs1 \af31507 \ltrch\fcs0 \cf2\insrsid10427476 Template\\Address}{\rtlch\fcs1 \af31507 \ltrch\fcs0 \cf2\insrsid10427476\charrsid8469522 )}{
+\rtlch\fcs1 \af31507 \ltrch\fcs0 \insrsid10427476 ]
+%[LowerCase(}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\cf2\kerning0\insrsid10427476\charrsid10427476 Initials(KF_Investigator.FullName, false))}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf1\kerning0\insrsid10427476\charrsid10427476 ]
+%[TitleCase(}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\cf2\kerning0\insrsid10427476\charrsid10427476 KF_Atty_Def_Active_Address.Address)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid10427476\charrsid10427476 ]
+%[TitleCase(}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\cf2\kerning0\insrsid10427476\charrsid10427476 KF_Atty_Def_Active.FullName)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid10427476\charrsid10427476 ]
+%[TitleCase(}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid10427476\charrsid10427476 
+JW_Defendant_Address.Address)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid10427476\charrsid10427476 ]
+%[TitleCase(}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid10427476\charrsid10427476 JW_Defendant_Address.City)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid10427476\charrsid10427476 ]
+%[TitleCase(}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid10427476\charrsid10427476 JW_Defendant.FullName)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid10427476\charrsid10427476 ]
+%[TitleCase(}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid10427476\charrsid10427476 JW_Defendant.LastName)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf1\kerning0\insrsid10427476\charrsid10427476 
+]
+%[TitleCase(}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid10427476\charrsid10427476 KF_Atty_Def_Active_Address.City)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid10427476\charrsid10427476 ]
+%[TitleCase(}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid10427476\charrsid10427476 KF_Atty_Def_Active.LastName)}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\kerning0\insrsid10427476\charrsid10427476 ]

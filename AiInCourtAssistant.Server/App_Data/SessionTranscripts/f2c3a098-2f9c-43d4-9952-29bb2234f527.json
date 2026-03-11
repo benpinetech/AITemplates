@@ -1,0 +1,9 @@
+{
+  "sessionId": "f2c3a098-2f9c-43d4-9952-29bb2234f527",
+  "tenantId": "00000000-0000-0000-0000-000000000000",
+  "courtroom": "Courtroom B",
+  "docketDate": "2025-10-17",
+  "status": "Failed",
+  "chunks": [],
+  "error": "Deepgram API key is not set (Admin \u2192 Deepgram)."
+}

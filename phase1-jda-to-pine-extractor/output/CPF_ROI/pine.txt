@@ -1,0 +1,9 @@
+@[builtin.today.FormatDate(}{\rtlch\fcs1 \af0\afs20 \ltrch\fcs0 \f0\kerning0\cgrid0\insrsid11732710 MM/dd/yyyy}{\rtlch\fcs1 \af0\afs20 \ltrch\fcs0 
+\f0\kerning0\cgrid0\insrsid11732710\charrsid11732710 )]
+@[Complainant.first.FormatName(F L).SetCasing(Title)]
+@[cu.FormatName(FILI)]
+@[Investigator.first.FormatName(F L).SetCasing(Title)]
+@[Prosecutor.first.FormatName(F L).SetCasing(Title)]
+@[Prosecutor.first.FormatName(FILI)]
+@[ProsNum.first.Number]
+@[Respondent.first.FormatName(F L).SetCasing(Title)]

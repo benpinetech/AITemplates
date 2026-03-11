@@ -1,0 +1,28 @@
+@[}{
+\rtlch\fcs1 \af132\afs22 \ltrch\fcs0 \f132\fs22\kerning0\insrsid11604423 x}{\rtlch\fcs1 \af132\afs22 \ltrch\fcs0 \f132\fs22\kerning0\insrsid11604423\charrsid11604423 .StreetAddress.SetCasing(Title)]
+@[}{\rtlch\fcs1 \af132\afs22 \ltrch\fcs0 \f132\fs22\kerning0\insrsid11604423 x}{
+\rtlch\fcs1 \af132\afs22 \ltrch\fcs0 \f132\fs22\kerning0\insrsid11604423\charrsid11604423 .Zip]
+@[}{\rtlch\fcs1 \af132\afs22 \ltrch\fcs0 \f132\fs22\kerning0\insrsid11604423 x}{\rtlch\fcs1 \af132\afs22 \ltrch\fcs0 
+\f132\fs22\kerning0\insrsid11604423\charrsid11604423 .City.SetCasing(Title)]
+@[}{\rtlch\fcs1 \af132\afs22 \ltrch\fcs0 \f132\fs22\kerning0\insrsid11604423 x}{\rtlch\fcs1 \af132\afs22 \ltrch\fcs0 \f132\fs22\kerning0\insrsid11604423\charrsid11604423 .State]
+@[builtin.today.FormatDate(preset2)]
+@[Defense.first.FormatName(F L).SetCasing(Title)]
+@[DefenseAddress.EndForEach]
+@[DefenseAddress.first.City.SetCasing(Title)]
+@[DefenseAddress.first.State]
+@[DefenseAddress.first.StreetAddress.SetCasing(Title)]
+@[DefenseAddress.first.Zip]
+@[DefenseAddress.ForEach(y)]
+@[If(}{\rtlch\fcs1 \af132\afs22 \ltrch\fcs0 \f132\fs22\kerning0\insrsid16583090\charrsid16583090 @[DefenseAddress.first.Type]
+@[If(}{\rtlch\fcs1 \af132\afs22 \ltrch\fcs0 \f132\fs22\kerning0\insrsid1986705\charrsid1986705 @[}{\rtlch\fcs1 \af132\afs22 \ltrch\fcs0 \f132\fs22\kerning0\insrsid11604423 x}{\rtlch\fcs1 \af132\afs22 
+\ltrch\fcs0 \f132\fs22\kerning0\insrsid1986705\charrsid1986705 .Type]
+@[PDJOrder]
+@[Prosecutor.first.FormatName(F L).SetCasing(Title)]
+@[ProsecutorEmail.first.EmailAddress]
+@[ProsNum.first.Number]
+@[Respondent.first.FormatName(F L).SetCasing(Title)]
+@[Respondent.first.FormatName(F L).SetCasing(Upper)]
+@[RespondentAddress.EndForEach]
+@[RespondentAddress.ForEach(x)]
+@[RespondentBarNum.first.Number]
+@[RespondentEmail.first.EmailAddress]

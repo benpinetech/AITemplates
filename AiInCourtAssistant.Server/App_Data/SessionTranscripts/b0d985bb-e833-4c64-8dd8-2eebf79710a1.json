@@ -1,0 +1,9 @@
+{
+  "sessionId": "b0d985bb-e833-4c64-8dd8-2eebf79710a1",
+  "tenantId": "00000000-0000-0000-0000-000000000000",
+  "courtroom": "Courtroom B",
+  "docketDate": "2025-10-14",
+  "status": "Failed",
+  "chunks": [],
+  "error": "Response status code does not indicate success: 401 (Unauthorized)."
+}

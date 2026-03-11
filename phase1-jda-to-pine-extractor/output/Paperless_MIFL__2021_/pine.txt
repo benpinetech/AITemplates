@@ -1,0 +1,44 @@
+@[}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\kerning0\insrsid2642270 x}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid2642270\charrsid2642270 .Zip]
+@[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\cgrid0\insrsid15802161 Else}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\kerning0\cgrid0\insrsid15802161 If(@[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\cgrid0\insrsid15802161\charrsid15802161 IntakeAssistant}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\cgrid0\insrsid15802161 ]
+@[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\cgrid0\insrsid15802161 Else}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\cgrid0\insrsid15802161 If(@[}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\kerning0\cgrid0\insrsid15802161\charrsid15802161 IntakeAssistant}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\cgrid0\insrsid15802161 ]
+@[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\cgrid0\insrsid15802161\charrsid15802161 IntakeAssistant}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\cgrid0\insrsid15802161 ]
+@[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid2642270 x}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\kerning0\insrsid2642270\charrsid2642270 .State]
+@[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid2642270 x}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid2642270\charrsid2642270 .City.SetCasing(Title)]
+@[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid2642270 x}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid2642270\charrsid2642270 .StreetAddress.SetCasing(Title)]
+@[builtin.today.FormatDate(preset1)]
+@[Complainant.first.FormatName(F L).SetCasing(Title)]
+@[cu.FormatName(FILI)]
+@[Defense.first.FormatName(F L).SetCasing(Title)]
+@[Defense.first.FormatName(L).SetCasing(Title)]
+@[DefenseAddress.first.City.SetCasing(Title)]
+@[DefenseAddress.first.State]
+@[DefenseAddress.first.StreetAddress.SetCasing(Title)]
+@[DefenseAddress.first.Zip]
+@[DefenseInfo.Prefix]
+@[ElseIf(@[}{
+\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\cgrid0\insrsid8073500\charrsid15802161 IntakeAssistant}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\cgrid0\insrsid8073500 ]
+@[ElseIf(@[}{\rtlch\fcs1 
+\af0 \ltrch\fcs0 \f207\kerning0\cgrid0\insrsid15802161\charrsid15802161 IntakeAssistant}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\cgrid0\insrsid15802161 ]
+@[ElseIf(@[RespondentInfo.Gender]
+@[If(}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid349394\charrsid349394 @[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid349394 x}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\kerning0\insrsid349394\charrsid349394 .Type]
+@[If(}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid349394\charrsid349394 @[DefenseAddress.first.Type]
+@[If(@[}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\kerning0\cgrid0\insrsid15802161\charrsid15802161 IntakeAssistant}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\cgrid0\insrsid15802161 ]
+@[If(@[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\cgrid0\insrsid15802161\charrsid15802161 IntakeAssistant}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\kerning0\cgrid0\insrsid15802161 ]
+@[If(@[Defense.Any()]
+@[If(@[RespondentInfo.Gender]
+@[Prosecutor.first.FormatName(F L).SetCasing(Title)]
+@[Prosecutor.first.FormatName(FILI)]
+@[ProsNum.first.Number]
+@[Respondent.first.FormatName(F L).SetCasing(Title)]
+@[Respondent.first.FormatName(L).SetCasing(Title)]
+@[RespondentAddress.EndForEach]
+@[RespondentAddress.ForEach(x)]
+@[Subdocument(3)]
+@[Subdocument(5)]

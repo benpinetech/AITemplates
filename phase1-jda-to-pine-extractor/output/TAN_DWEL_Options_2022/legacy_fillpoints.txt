@@ -1,0 +1,85 @@
+%[}{\rtlch\fcs1 \af0 
+\ltrch\fcs0 \f207\cf2\kerning0\insrsid15416549\charrsid15416549 EndForEach}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f0\cf2\kerning0\insrsid15416549\charrsid15416549 Subdocument(Template\\Letterhead)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f0\kerning0\insrsid15416549\charrsid15416549 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\cf2\kerning0\insrsid15416549\charrsid15416549 Else}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\cf2\kerning0\insrsid15416549\charrsid15416549 EndIf}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\cf2\kerning0\insrsid15416549\charrsid15416549 FormatDate (CurrentDate(),MMMM d, yyyy)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf1\kerning0\insrsid15416549\charrsid15416549 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\cf2\kerning0\insrsid15416549\charrsid15416549 If(TAN2022.TAN=Hold negligent conversion)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\cf2\kerning0\insrsid15416549\charrsid15416549 If}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf1\kerning0\insrsid15416549\charrsid15416549 (}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid15416549\charrsid15416549 
+JW_Atty_Def_Active.FullName.IsEmpty)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf1\kerning0\insrsid15416549\charrsid15416549 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\cf2\kerning0\insrsid15416549\charrsid15416549 If}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf1\kerning0\insrsid15416549\charrsid15416549 (}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid15416549\charrsid15416549 
+KF_Atty_Def_Active.FullName.IsEmpty)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf1\kerning0\insrsid15416549\charrsid15416549 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\cf2\kerning0\insrsid15416549\charrsid15416549 Initials(JW_Atty_Pros_Active.FullName,false)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf1\kerning0\insrsid15416549\charrsid15416549 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\cf2\kerning0\insrsid15416549\charrsid15416549 JW_Defendant_Address.StateCode}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\cf2\kerning0\insrsid15416549\charrsid15416549 KF_Atty_Def_Active_Address.StateCode}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\cf2\kerning0\insrsid15416549\charrsid15416549 KF_Def_NameAttribute.NameAttributeValue}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\cf2\kerning0\insrsid15416549\charrsid15416549 KF_NameAttribute.NameAttributeValue}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\cf2\kerning0\insrsid15416549\charrsid15416549 MultiSelect(a in JW_Defendant_Address)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\cgrid0\insrsid15416549\charrsid15416549 kf_Atty_Pros_Active_AgencyNum.CaseAgencyNumber}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\kerning0\cgrid0\insrsid15416549\charrsid15416549 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid15416549\charrsid15416549 
+JW_Defendant_Address.Zip}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid15416549\charrsid15416549 
+KF_Atty_Def_Active_Address.Zip}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid15416549\charrsid15416549 ElseIf(TAN2022.TAN=3 months of fees)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 
+]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid15416549\charrsid15416549 ElseIf(TAN2022.TAN=Advise)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid15416549\charrsid15416549 ElseIf(TAN2022.TAN=Flat fee)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 
+]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid15416549\charrsid15416549 ElseIf(TAN2022.TAN=New)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 
+]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid15416549\charrsid15416549 ElseIf(TAN2022.TAN=No cash out)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 
+]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid15416549\charrsid15416549 ElseIf(TAN2022.TAN=No earned fees in account)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 
+]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid15416549\charrsid15416549 ElseIf(TAN2022.TAN=Portion)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 
+]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid15416549\charrsid15416549 ElseIf(TAN2022.TAN=Purpose)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid15416549\charrsid15416549 ElseIf(TAN2022.TAN=Reconcile account)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 
+]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid15416549\charrsid15416549 ElseIf(TAN2022.TAN=Suggest TAS)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 
+]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid15416549\charrsid15416549 ElseIf(TAN2022.TAN=Supervision of trust school)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 
+]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid15416549\charrsid15416549 EndIf}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid15416549\charrsid15416549 EndMultiSelect}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid15416549\charrsid15416549 ForEach(x in TAN2022.TAN)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid15416549\charrsid15416549 If(JW_Defendant_Address.AddressTypeCode=RBA)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid15416549\charrsid15416549 If(KF_Atty_Def_Active_Address.AddressTypeCode=RBA)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid15416549\charrsid15416549 JW_Atty_Def_Active.MrMs}{
+\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid15416549\charrsid15416549 JW_Atty_Pros_Active.FullName}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\cf1\kerning0\insrsid15416549\charrsid15416549 ]
+%[}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid15416549\charrsid15416549 JW_Defendant.MrMs}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\cf1\kerning0\insrsid15416549\charrsid15416549 ]
+%[}{\rtlch\fcs1 \af0\afs20 \ltrch\fcs0 \f207\cf2\kerning0\insrsid15416549\charrsid15416549 KF_AttyProsTitle.NameAttributeValue}{\rtlch\fcs1 \af0\afs20 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 ]
+%[}{\rtlch\fcs1 \af31507 \ltrch\fcs0 \cf2\insrsid15416549\charrsid8469522 Subdocument(}{\rtlch\fcs1 \af31507 \ltrch\fcs0 \cf2\insrsid15416549 Template\\Address}{\rtlch\fcs1 \af31507 \ltrch\fcs0 \cf2\insrsid15416549\charrsid8469522 )}{
+\rtlch\fcs1 \af31507 \ltrch\fcs0 \insrsid15416549 ]
+%[LowerCase(}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\cf2\kerning0\insrsid15416549\charrsid15416549 Initials(KF_Investigator.FullName, false))}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf1\kerning0\insrsid15416549\charrsid15416549 ]
+%[TitleCase(}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\cf2\kerning0\insrsid15416549\charrsid15416549 KF_Atty_Def_Active_Address.Address)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 ]
+%[TitleCase(}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\cf2\kerning0\insrsid15416549\charrsid15416549 KF_Atty_Def_Active.FullName)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 ]
+%[TitleCase(}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid15416549\charrsid15416549 
+JW_Defendant_Address.Address)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 ]
+%[TitleCase(}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid15416549\charrsid15416549 JW_Atty_Def_Active.LastName)}{\rtlch\fcs1 \af0 \ltrch\fcs0 
+\f207\kerning0\insrsid15416549\charrsid15416549 ]
+%[TitleCase(}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid15416549\charrsid15416549 JW_Defendant_Address.City)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 ]
+%[TitleCase(}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid15416549\charrsid15416549 JW_Defendant.FullName)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 ]
+%[TitleCase(}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid15416549\charrsid15416549 JW_Defendant.LastName)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf1\kerning0\insrsid15416549\charrsid15416549 
+]
+%[TitleCase(}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\cf2\kerning0\insrsid15416549\charrsid15416549 KF_Atty_Def_Active_Address.City)}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f207\kerning0\insrsid15416549\charrsid15416549 ]

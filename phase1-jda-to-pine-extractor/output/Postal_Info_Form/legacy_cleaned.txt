@@ -1,0 +1,4 @@
+%[ FormatDate (CurrentDate(),MMMM d, yyyy) ]
+%[ KF_Atty_Pros_Active_AgencyNum.CaseAgencyNumber ]
+%[ Subdocument(Template ]
+%[ Subdocument(Template Address ) ]

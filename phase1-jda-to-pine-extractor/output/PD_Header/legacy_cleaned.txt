@@ -1,0 +1,7 @@
+%[ Cust_CaseNumbers.CaseNumbers ]
+%[ Cust_Division.Division ]
+%[ Cust_PDHeader.CvsD ]
+%[ Cust_PDHeader.FSvGW ]
+%[ EndForEach ]
+%[ ForEach(C IN Cust_CaseNumbers.CaseNumbers) ]
+%[ UpperCase(JW_Defendant.FullName) ]

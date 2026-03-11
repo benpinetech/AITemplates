@@ -1,0 +1,7 @@
+%[ FormatDate (CurrentDate(),MMMM d, yyyy) ]
+%[ kf_Atty_Pros_Active_AgencyNum.CaseAgencyNumber ]
+%[FormatDate( JW_CaseDetails.CaseReceivedDt,MMMM d, yyyy) ]
+%[TitleCase( JW_Atty_Pros_Active.LastName) ]
+%[TitleCase( JW_Defendant.FullName) ]
+%[TitleCase( JW_VicWitOff.FullName) ]
+%[TitleCase( KF_Investigator.LastName) ]

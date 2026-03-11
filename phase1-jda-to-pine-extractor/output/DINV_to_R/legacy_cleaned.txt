@@ -1,0 +1,8 @@
+%[ Else ]
+%[ EndIf ]
+%[ If ( KF _Atty_Def_Active.FullName.IsEmpty) ]
+%[ If ( KF_Atty_Def_Active.FullName.IsEmpty) ]
+%[ Initials(JW_Atty_Pros_Active.FullName, false) ]
+%[ Subdocument(Template ]
+%[ Subdocument(Template R addresses) ]
+%[LowerCase( Initials (JW_CurrentUser.FullName,false)) ]

@@ -1,0 +1,97 @@
+﻿@page "/case-search"
+@using AiInCourtAssistant.Shared.Models
+@using System.Text.Json
+@inject HttpClient Http
+@inject AiInCourtAssistant.Client.Services.LoginService LoginService
+
+<h3>Case Search</h3>
+
+<input @bind="searchTerm" class="form-control mb-2" placeholder="Search term" />
+<button class="btn btn-primary mb-3" @onclick="SearchCases">Search</button>
+
+@if (cases == null)
+{
+    <p>No results yet.</p>
+}
+else if (!cases.Any())
+{
+    <p>No matching cases found.</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Case Number</th>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Subtype</th>
+                <th>Date Received</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var c in cases)
+            {
+                <tr>
+                    <td>@c.CachedPrimaryCaseNumber</td>
+                    <td>@c.Name</td>
+                    <td>@c.Type</td>
+                    <td>@c.Subtype</td>
+                    <td>@c.DateReceived?.ToString("yyyy-MM-dd")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private string searchTerm = string.Empty;
+    private List<PineCaseSearchResult>? cases;
+
+    private async Task SearchCases()
+    {
+        var token = LoginService.GetToken();
+        if (string.IsNullOrEmpty(token))
+        {
+            Console.WriteLine("No token found.");
+            return;
+        }
+
+        var request = new HttpRequestMessage(HttpMethod.Get, $"/api/proxy/case/search?searchTerm={searchTerm}");
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        var response = await Http.SendAsync(request);
+        var json = await response.Content.ReadAsStringAsync();
+
+        Console.WriteLine("=== RAW JSON ===");
+        Console.WriteLine(json);
+
+        if (response.IsSuccessStatusCode)
+        {
+            var root = JsonSerializer.Deserialize<CaseSearchResponse>(json, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+
+            if (root == null)
+            {
+                Console.WriteLine("Deserialized root is null.");
+                cases = new();
+                return;
+            }
+
+            Console.WriteLine($"Items count: {root.Items.Count}");
+            foreach (var item in root.Items)
+            {
+                Console.WriteLine($"CaseID: {item.CaseID}, Name: {item.Name}");
+            }
+
+            cases = root.Items;
+        }
+        else
+        {
+            Console.WriteLine($"HTTP Error: {(int)response.StatusCode}");
+            cases = new();
+        }
+    }
+}

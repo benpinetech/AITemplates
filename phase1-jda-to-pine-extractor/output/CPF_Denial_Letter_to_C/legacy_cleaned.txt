@@ -1,0 +1,3 @@
+%[ LowerCase(Initials (JW_CurrentUser.FullName,false)) ]
+%[ Subdocument(Template ]
+%[ Subdocument(Template to C) ]
