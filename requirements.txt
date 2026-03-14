@@ -1,0 +1,14 @@
+# Langgraph requirements
+langgraph
+
+# Langchain requirements
+langchain-community
+langchain-openai
+langchain-chroma
+langchain-text-splitters
+
+# Other requirements
+dotenv
+pydantic
+chromadb
+

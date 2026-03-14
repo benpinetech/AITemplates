@@ -350,7 +350,7 @@ class Program
         }
         return set;
     }
-
+z
     static Dictionary<string, int> CountVarOccurrences(IEnumerable<string> fillpoints, bool isLegacy)
     {
         var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
