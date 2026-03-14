@@ -7,6 +7,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def build_vector_store(ground_truth_path: str, persist_directory: str = "./chroma_db"):
+    """Build a chromadb vector store from the ground truth syntax reference file.
+    Args:
+        ground_truth_path: Path to the ground truth syntax reference file.
+        persist_directory: Directory where the chromadb vector store will be persisted.
+    Returns:
+        A Chroma vector store instance.
+    """
     chunks = []
 
     with open(ground_truth_path, "r") as f:
@@ -44,6 +51,12 @@ def build_vector_store(ground_truth_path: str, persist_directory: str = "./chrom
     return vector_store
 
 def load_vector_store(persist_directory: str = "./chroma_db"):
+    """Load the chromadb vector store from the specified directory.
+    Args:
+        persist_directory: Directory where the chromadb vector store is persisted.
+    Returns:
+        A Chroma vector store instance.
+    """
     embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
     return Chroma(
         persist_directory=persist_directory,

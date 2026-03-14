@@ -53,3 +53,7 @@ Desktop.ini
 .env
 
 venv/
+
+chroma_db/
+
+__pycache__/

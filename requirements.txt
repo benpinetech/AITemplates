@@ -2,6 +2,7 @@
 langgraph
 
 # Langchain requirements
+langchain
 langchain-community
 langchain-openai
 langchain-chroma
