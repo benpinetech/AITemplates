@@ -10,3 +10,7 @@ class AgentState(TypedDict):
     example_pine_template: str
     extracted_legacy_info: list[str]
     mapped_pine_info: list[str]
+    mapping_calls: int
+    generated_pine_template: str
+    rtf_rendering_output: str = ""
+    rtf_rendering_calls: int

@@ -25,7 +25,18 @@ def main():
     agent = Agent(tools=[])
 
     final_state = asyncio.run(agent.run(legacy_template=legacy_template, example_pine_template=pine_template))
+    mapped_info = final_state["mapped_pine_info"]
+    unmapped = 0
+    for mapping in mapped_info:
+        if "No mapping found" in mapping:
+            unmapped += 1
+
+    with open("template_output/output.rtf", "w") as f:
+        f.write(final_state["generated_pine_template"])
+
     print("Final state:", final_state["mapped_pine_info"])
+    print("Final generated Pine template:", final_state["generated_pine_template"])
+    print(f"Number of unmapped items: {unmapped}")
     
 if __name__ == "__main__":
     main()

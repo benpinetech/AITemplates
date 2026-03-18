@@ -61,5 +61,5 @@ def load_vector_store(persist_directory: str = "./chroma_db"):
     return Chroma(
         persist_directory=persist_directory,
         embedding_function=embeddings,
-        collection_name="codebase"
+        collection_name="ground_truth_syntax"
     )
