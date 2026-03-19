@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
@@ -6,7 +7,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-def build_vector_store(ground_truth_path: str, persist_directory: str = "./chroma_db"):
+_DEFAULT_CHROMA_DIR = str(Path(__file__).resolve().parent.parent / "chroma_db")
+
+def build_vector_store(ground_truth_path: str, persist_directory: str = _DEFAULT_CHROMA_DIR):
     """Build a chromadb vector store from the ground truth syntax reference file.
     Args:
         ground_truth_path: Path to the ground truth syntax reference file.
@@ -50,7 +53,7 @@ def build_vector_store(ground_truth_path: str, persist_directory: str = "./chrom
     print(f"Vector store built and persisted to {persist_directory}")
     return vector_store
 
-def load_vector_store(persist_directory: str = "./chroma_db"):
+def load_vector_store(persist_directory: str = _DEFAULT_CHROMA_DIR):
     """Load the chromadb vector store from the specified directory.
     Args:
         persist_directory: Directory where the chromadb vector store is persisted.
