@@ -14,3 +14,5 @@ class AgentState(TypedDict):
     generated_pine_template: str
     rtf_rendering_output: str = ""
     rtf_rendering_calls: int
+    rtf_validation_error: str
+    generation_retries: int

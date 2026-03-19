@@ -1,27 +1,3 @@
-
-def extraction_planning_prompt(legacy_template: str, example_pine_template: str) -> str:
-    return f"""
-You are an expert planning extraction of variables and functions 
-from legacy legal templates and mapping them to Pine syntax.
-
-You will be provided with a legacy template and a reference Pine template.
-
-Your task is to provide a structured, numbered plan to extract ALL dynamic
-variables and functions from the legacy template. Ignore any static text.
-
-Your output should be a numbered step by step plan to complete the extraction.
-DO NOT perform any extraction or conversion to Pine syntax — only provide the plan.
-Respond only with the plan, do not include any other text in your response.
-
-Here is the legacy template to analyze:
-{legacy_template}
-
-Here is an example Pine template for reference:
-{example_pine_template}
-
-Begin planning."""
-
-
 def extraction_prompt(legacy_template: str) -> str:
     return f"""
 You are an expert at extracting variables and functions 
@@ -29,6 +5,15 @@ from legacy legal templates and mapping them to Pine syntax.
 
 Your task is to extract ALL dynamic variables and functions from the legacy template below.
 Ignore any static text.
+
+Follow this extraction plan step-by-step:
+1. Scan for all merge field delimiters: %[...] tokens, including nested ones like %[If(%[var])]
+2. Extract field references: any %[FieldName] or %[Object.Property] tokens (e.g., %[JW_Respondent.FullName])
+3. Extract conditional blocks: %[If(...)], %[ElseIf(...)], %[Else], %[EndIf] — capture the full condition expression
+4. Extract loop constructs: %[ForEach(...)], %[EndForEach] — capture the iterator variable and collection
+5. Extract function calls: %[TitleCase(...)], %[UpperCase(...)], %[LowerCase(...)], %[FormatDate(...)], %[Initials(...)], %[AddDay(...)] — capture function name and arguments
+6. Extract special tokens: %[CurrentDate], %[Subdocument(...)], %[MultiSelect], %[Cca(...)]
+7. Deduplicate: list each unique variable/function once, preserving original delimiters
 
 Your output should be a list of extracted legacy variables and functions.
 Ensure you gather every dynamic variable and function.
@@ -39,32 +24,6 @@ Here is the legacy template to analyze:
 {legacy_template}
 
 Begin extraction."""
-
-
-def mapping_planning_prompt(extracted_legacy_info: list) -> str:
-    return f"""
-You are an expert planner for mapping extracted legacy variables and functions from legal templates to Pine syntax.
-
-You have already extracted a list of legacy variables and functions from a legacy template.
-
-Now your task is to create a plan to map EACH extracted legacy variable and function
-to the appropriate Pine syntax.
-
-During the next step you will be provided with:
-- A tool to search a Pine syntax vector database
-- The list of extracted variables and functions
-
-The plan you create does not need to include extraction — that is already done.
-The plan should be a numbered step by step process to map each extracted legacy
-variable and function to Pine syntax.
-
-Respond only with the plan, do not include any other text in your response.
-
-Here is the list of extracted legacy variables and functions:
-{extracted_legacy_info}
-
-Begin planning."""
-
 
 def mapping_prompt(extracted_legacy_info: list) -> str:
     return f"""
@@ -77,8 +36,10 @@ You will be provided with:
 - A tool to search a Pine syntax vector database to find the appropriate Pine syntax for each item
 
 Your output should be a mapping of each extracted legacy variable and function to the appropriate Pine syntax.
-If you cannot find a mapping for a particular item, respond with 'No mapping found' for that item.
-Ensure you map EVERY extracted variable and function.
+Ensure you map EVERY extracted variable and function. Every single item in the list must appear
+in your output with either a valid Pine mapping or an explicit 'No mapping found' marker.
+Do not skip or silently omit any item — if the database returns no relevant result,
+you must still include the item with 'No mapping found'.
 
 IMPORTANT: To speed up the process, make MULTIPLE tool calls in a single response.
 Batch your searches — search for as many variables as possible at once using parallel tool calls
@@ -93,7 +54,16 @@ Here is the list of extracted legacy variables and functions:
 Begin mapping."""
 
 
-def generation_prompt(legacy_template: str, example_pine_template: str, mapped_pine_info: list, rtf_rendering_output: str = "") -> str:
+def generation_prompt(legacy_template: str, mapped_pine_info: list, rtf_validation_error: str = "") -> str:
+    retry_block = ""
+    if rtf_validation_error:
+        retry_block = f"""
+IMPORTANT — YOUR PREVIOUS ATTEMPT FAILED VALIDATION:
+{rtf_validation_error}
+
+Fix these issues in this attempt. Pay careful attention to brace balance and complete output.
+"""
+
     return f"""
 You are an expert at generating .rtf files with correct syntax for Pine legal templates.
 
@@ -102,26 +72,28 @@ Now your task is to generate a completed .rtf Pine template.
 
 You will be provided:
 - The original legacy template (use this as your starting point)
-- An example Pine template for reference
 - The mappings from legacy variables to Pine syntax
 
 Instructions:
-- Keep the EXACT structure and formatting of the legacy template.
-- Replace the legacy variables and functions with the appropriate Pine syntax based on the mappings.
-- If a mapping says 'No mapping found', insert the plain text 'No mapping found' in place of that variable.
-- Your response must be ONLY the .rtf file contents — no other text.
-- The output MUST be a valid, renderable .rtf file.
-
+- Start from the original legacy template and preserve its EXACT structure, formatting, and static text.
+- Replace each legacy variable and function with the corresponding Pine syntax from the mappings.
+- For any mapping marked 'No mapping found', replace the legacy variable with the literal text
+  UNMAPPED[original_variable] so it is clearly visible and searchable in the output.
+  Never silently drop or omit an unmapped variable.
+- The output must contain the same number of variables as the original template.
+  Every legacy variable must be accounted for — either converted to Pine syntax or marked as UNMAPPED.
+- Ensure all control flow is balanced: every @[If] must have a matching @[EndIf],
+  every @[Foreach] must have a matching @[EndForEach].
+- Output the COMPLETE document from start to finish. Do not truncate or abbreviate any section.
+- Preserve ALL binary/hex-encoded sections (themedata, colorschememapping) byte-for-byte from the original.
+- Your response must be ONLY the .rtf file contents — no markdown fences, no commentary.
+- The output MUST be a valid, renderable .rtf file with balanced braces.
+  The document must start with {{\\rtf1 and end with a matching closing }}.
+{retry_block}
 Here is the legacy template we are converting to Pine syntax:
 {legacy_template}
 
-Here is an example Pine template for reference:
-{example_pine_template}
-
 Here are the mappings from legacy to Pine syntax:
 {mapped_pine_info}
-
-Here is the ouput of your previous generation attempt:
-{rtf_rendering_output}
 
 Begin the generation of the .rtf file Pine template."""

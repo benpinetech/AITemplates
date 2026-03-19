@@ -13,3 +13,4 @@ dotenv
 pydantic
 chromadb
 striprtf
+RTFDE

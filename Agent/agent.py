@@ -7,11 +7,10 @@ from typing import Literal
 from dotenv import load_dotenv
 from state import AgentState
 from tools import get_rag_tool
-from nodes import make_extraction_planning_call, make_extraction_call, make_pine_mapping_planning_call, make_mapping_call, make_pine_template_generation_call
+from nodes import make_extraction_call, make_mapping_call, make_pine_template_generation_call, validate_rtf
 
 class Agent:
-    def __init__(self, tools, planning_model="gpt-4.1-mini", execution_model="gpt-5-mini", generation_model="gpt-4.1-mini", temperature=0.7, max_tokens=16384, generation_max_tokens=32768):
-        self.planning_model = planning_model
+    def __init__(self, tools, execution_model="gpt-5-mini", generation_model="gpt-5-mini", temperature=0.7, max_tokens=16384, generation_max_tokens=65536):
         self.execution_model = execution_model
         self.generation_model = generation_model
         self.temperature = temperature
@@ -33,16 +32,13 @@ class Agent:
         return "end"
     
     def should_rerender(self, state):
-        if state.get("rtf_rendering_calls", 0) >= 3:
+        if state.get("generation_retries", 0) >= 3:
             return "end"
-        if state.get("rtf_rendering_output", "") == "":
-            return "end"
-        return "rerender"
+        if state.get("rtf_validation_error", ""):
+            return "rerender"
+        return "end"
 
     def _build_graph(self):
-        # Planning model (non-reasoning, fast)
-        planning_model = init_chat_model(self.planning_model, temperature=self.temperature, max_tokens=self.max_tokens)
-
         # Execution model (reasoning, for complex tasks like mapping)
         execution_model = init_chat_model(self.execution_model, temperature=self.temperature, max_tokens=self.max_tokens)
 
@@ -56,31 +52,27 @@ class Agent:
         # Tool node for the RAG tool
         rag_tool_node = ToolNode([rag_tool])
 
-        extraction_planning = make_extraction_planning_call(planning_model)
         extraction = make_extraction_call(execution_model)
-        mapping_planning = make_pine_mapping_planning_call(planning_model)
         mapping = make_mapping_call(execution_model_with_rag_tool)
         pine_template_generation = make_pine_template_generation_call(generation_model)
 
         agent_builder = StateGraph(AgentState)
         
-        agent_builder.add_node("extraction_planning", extraction_planning)
         agent_builder.add_node("extraction", extraction)
-        agent_builder.add_node("mapping_planning", mapping_planning)
         agent_builder.add_node("mapping", mapping)
         agent_builder.add_node("rag_tool", rag_tool_node)
         agent_builder.add_node("pine_template_generation", pine_template_generation)
+        agent_builder.add_node("validate_rtf", validate_rtf)
 
-        agent_builder.add_edge(START, "extraction_planning")
-        agent_builder.add_edge("extraction_planning", "extraction")
-        agent_builder.add_edge("extraction", "mapping_planning")
-        agent_builder.add_edge("mapping_planning", "mapping")
+        agent_builder.add_edge(START, "extraction")
+        agent_builder.add_edge("extraction", "mapping")
         agent_builder.add_conditional_edges("mapping", self.should_continue,{
             "tool_node": "rag_tool",
             "end": "pine_template_generation"
         })
         agent_builder.add_edge("rag_tool", "mapping")
-        agent_builder.add_conditional_edges("pine_template_generation", self.should_rerender, {
+        agent_builder.add_edge("pine_template_generation", "validate_rtf")
+        agent_builder.add_conditional_edges("validate_rtf", self.should_rerender, {
             "rerender": "pine_template_generation",
             "end": END
         })
