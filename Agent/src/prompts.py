@@ -25,7 +25,7 @@ Here is the legacy template to analyze:
 
 Begin extraction."""
 
-def mapping_prompt(extracted_legacy_info: list) -> str:
+def mapping_prompt(unmapped_legacy_info: list) -> str:
     return f"""
 You are an expert at mapping extracted legacy variables and functions from legal templates to Pine syntax.
 
@@ -49,7 +49,7 @@ Respond only with the mappings of variables and functions, do not include any ot
 Preserve the original merge field delimiters.
 
 Here is the list of extracted legacy variables and functions:
-{extracted_legacy_info}
+{unmapped_legacy_info}
 
 Begin mapping."""
 
@@ -94,6 +94,6 @@ Here is the legacy template we are converting to Pine syntax:
 {legacy_template}
 
 Here are the mappings from legacy to Pine syntax:
-{mapped_pine_info}
+{chr(10).join(f'{m.legacy} -> {m.pine}' for m in mapped_pine_info)}
 
 Begin the generation of the .rtf file Pine template."""

@@ -6,6 +6,7 @@ from utils import build_vector_store, load_vector_store
 from dotenv import load_dotenv
 import os
 import argparse
+import time
 
 AGENT_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = AGENT_DIR.parent
@@ -45,23 +46,25 @@ def main():
 
     agent = Agent(tools=[])
 
+    start = time.time()
     final_state = asyncio.run(agent.run(legacy_template=legacy_template, example_pine_template=pine_template))
+    end = time.time()
+    print("Agent execution time:", end - start, "seconds")
     mapped_info = final_state["mapped_pine_info"]
     unmapped = 0
-    for mapping in mapped_info:
-        if "No mapping found" in mapping:
+    for m in mapped_info:
+        if "no mapping found" in m.pine.lower():
             unmapped += 1
 
     TEMPLATE_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    with open(TEMPLATE_OUTPUT_DIR / "output.rtf", "w") as f:
+    output_path = TEMPLATE_OUTPUT_DIR / template_file_path.name
+    with open(output_path, "w") as f:
         f.write(final_state["generated_pine_template"])
 
-    #print("Final state:", final_state["mapped_pine_info"])
-    #print("Final generated Pine template:", final_state["generated_pine_template"])
     print(f"Agent run complete.")
     print(f"Number of mapped items: {len(mapped_info) - unmapped}")
     print(f"Number of unmapped items: {unmapped}")
-    print(f"Final generated Pine template saved to {TEMPLATE_OUTPUT_DIR / 'output.rtf'}")
-    
+    print(f"Output saved to {output_path}")
+    print(f"all mapped variabled, functions, and their mappings: {final_state['mapped_pine_info']}")
 if __name__ == "__main__":
     main()

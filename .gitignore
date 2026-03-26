@@ -58,5 +58,6 @@ chroma_db/
 
 __pycache__/
 
+mapping_db/
 
 .~lock.*#
