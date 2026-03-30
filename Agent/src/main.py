@@ -23,13 +23,21 @@ PINE_DIR = EVAL_TEMPLATES_DIR / "input" / "pine"
 load_dotenv(REPO_ROOT / ".env")
 
 parser = argparse.ArgumentParser()
-parser.add_argument("File", help="Path to the legacy RTF template to be converted.")
-parser.add_argument('-e', '--evaluate', action='store_true', help="Run the agent in evaluation mode")
-parser.add_argument('-b', '--batch', action='store_true', help="Run the agent in batch mode on all templates in the provided directory")
+parser.add_argument("File", nargs="?", default=None, help="Path to a legacy RTF file, or a folder of RTF files when using -b.")
+parser.add_argument('-e', '--evaluate', action='store_true', help="Run the agent in evaluation mode (no File required)")
+parser.add_argument('-b', '--batch', action='store_true', help="Run the agent in batch mode on all .rtf files in the provided folder")
 
 def main():
     # Parse the command line arguments
     args = parser.parse_args()
+
+    if not args.evaluate and not args.File:
+        parser.error("File is required unless running in evaluation mode (-e)")
+
+    if args.batch:
+        batch_dir = Path(args.File)
+        if not batch_dir.is_dir():
+            parser.error(f"Batch mode (-b) requires a folder path, but '{args.File}' is not a directory.")
     
     # initialize the agent
     agent = Agent()
@@ -83,8 +91,28 @@ def main():
         print_batch_summary(all_results)
         save_eval_results(all_results, EVAL_OUTPUT_DIR / "eval_results.json")
 
+    elif args.batch:
+        print("Running in batch mode.")
+        batch_dir = Path(args.File)
+        for legacy_file in sorted(batch_dir.glob("*.rtf")):
+            print(f"\nProcessing {legacy_file.name}")
+            with open(legacy_file, "r") as f:
+                legacy_template = f.read()
+
+            start = time.time()
+            final_state = asyncio.run(agent.run(legacy_template=legacy_template))
+            duration = time.time() - start
+
+            # Save the generated output
+            TEMPLATE_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+            output_path = TEMPLATE_OUTPUT_DIR / legacy_file.name
+            with open(output_path, "w") as f:
+                f.write(final_state["generated_pine_template"])
+
+            print(f"Processed {legacy_file.name} in {duration:.1f} seconds. Output saved to {output_path}")
+
     else:
-        print("Running in normal mode.")
+        print("Running in single mode.")
         template_file_path = Path(args.File)
 
         if not template_file_path.exists():
@@ -108,28 +136,7 @@ def main():
         print(f"Output saved to {output_path}")
         print("Agent execution time:", end - start, "seconds")
 
-    # # Load the templates for the agent run
-    # with open(EXTRACTOR_DIR / "input" / "pine" / "3A.rtf", "r") as f:
-    #     pine_template = f.read()
 
 
-    # # Count how many unampped items there are in the results
-    # mapped_info = final_state["mapped_pine_info"]
-    # unmapped = 0
-    # for m in mapped_info:
-    #     if "no mapping found" in m.pine.lower():
-    #         unmapped += 1
-
-    # Save the generated pine template to the output directory
-    # TEMPLATE_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    # output_path = TEMPLATE_OUTPUT_DIR / template_file_path.name
-    # with open(output_path, "w") as f:
-    #     f.write(final_state["generated_pine_template"])
-    
-    # print(f"Agent run complete.")
-    # print(f"Number of mapped items: {len(mapped_info) - unmapped}")
-    # print(f"Number of unmapped items: {unmapped}")
-    
-    print(f"all mapped variabled, functions, and their mappings: {final_state['mapped_pine_info']}")
 if __name__ == "__main__":
     main()
