@@ -14,7 +14,6 @@ class AgentState(TypedDict):
     messages: Annotated[list[AnyMessage], operator.add]
     llm_calls: int
     legacy_template: str
-    example_pine_template: str
     extracted_legacy_info: list[str]
     fillpoint_spans: list[tuple[int, int, str]]
     unmapped_legacy_info: list[str]

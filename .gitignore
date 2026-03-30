@@ -60,4 +60,8 @@ __pycache__/
 
 mapping_db/
 
+evaluation_output/
+
+template_output/
+
 .~lock.*#

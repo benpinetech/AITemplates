@@ -11,13 +11,12 @@ from nodes import *
 from mappingdb import MappingDB
 
 class Agent:
-    def __init__(self, tools, execution_model="gpt-5-mini", generation_model="gpt-5-mini", temperature=0.7, max_tokens=16384, generation_max_tokens=65536):
+    def __init__(self, execution_model="gpt-5-mini", generation_model="gpt-5-mini", temperature=0.7, max_tokens=16384, generation_max_tokens=65536):
         self.execution_model = execution_model
         self.generation_model = generation_model
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.generation_max_tokens = generation_max_tokens
-        self.tools = tools
         self.graph = self._build_graph()
 
     def should_continue(self, state):
@@ -92,7 +91,7 @@ class Agent:
         # Return the compiled agent
         return agent_builder.compile()
     
-    def run(self, legacy_template: str, example_pine_template: str):
+    def run(self, legacy_template: str):
         """ Method to run the agent with a legacy template and example
             pine template
 
@@ -105,7 +104,6 @@ class Agent:
             messages=[],
             llm_calls=0,
             legacy_template=legacy_template,
-            example_pine_template=example_pine_template,
             extracted_legacy_info=[]
         )
         final_state = self.graph.ainvoke(initial_state)
