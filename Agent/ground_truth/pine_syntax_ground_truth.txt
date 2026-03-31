@@ -1,0 +1,1021 @@
+================================================================================
+PINE TEMPLATE SYNTAX — GROUND TRUTH REFERENCE
+================================================================================
+System: Pine (PineTech) — Legal Document Template Engine
+Context: Bar association / prosecutor / public defender legal case management
+Compiled from: PineProjects/AI_Templates/*.java, PineProjects/*/Fillpoints.java,
+               phase1-jda-to-pine-extractor/output/**/pine.txt
+Last updated: 2026-03-12
+================================================================================
+
+--------------------------------------------------------------------------------
+1. TOKEN FORMAT
+--------------------------------------------------------------------------------
+All Pine template expressions are wrapped in @[ and ].
+
+  Syntax: @[expression]
+
+Simple field access:
+  @[Respondent.first.NameLastName]
+
+Function call:
+  @[Respondent.first.FormatName(F M L)]
+
+Chained method call:
+  @[Defendant.first.FormatName(F M L).SetCasing(Upper)]
+
+Nested token (token inside token):
+  @[CreateVar(@Defendant, @CaseInvolvement.GetByQuery("CaseID":@[builtin.CaseID],"Type":"DEF"))]
+
+Control keywords (standalone):
+  @[If(condition)]
+  @[ElseIf(condition)]
+  @[Else]
+  @[EndIf]
+  @[Foreach(varName IN Collection)]
+  @[EndForEach]
+  @[Cca(expression)]     -- comma-separated concatenation
+  @[EndCca]
+
+--------------------------------------------------------------------------------
+2. BUILTIN VARIABLES
+--------------------------------------------------------------------------------
+These are system-provided variables always available without CreateVar.
+
+  @[builtin.CaseID]                       -- current case numeric ID
+  @[builtin.CurrentUserPersonnelID]       -- logged-in user's personnel ID
+  @[builtin.CurrentUserUserID]            -- logged-in user's system user ID
+  @[builtin.Today]                        -- today's date (raw)
+  @[builtin.today.FormatDate(preset1)]    -- today formatted: MMMM d, yyyy
+  @[builtin.Today.FormatDate(preset2)]    -- today formatted: d day of MMMM, yyyy
+  @[builtin.today.FormatDate(preset3)]    -- today formatted: MMMM, yyyy
+  @[builtin.Today.FormatDate(preset5)]    -- today formatted: MM/dd/yyyy
+  @[builtin.today.FormatDate(yyyy)]       -- 4-digit year only
+  @[builtin.Today.FormatDate(dddd)]       -- full weekday name (e.g. Monday)
+  @[builtin.Today.FormatDate(MMMM)]       -- full month name
+
+NOTE: "builtin.today" and "builtin.Today" are both observed — casing is flexible.
+
+--------------------------------------------------------------------------------
+3. DATE FORMAT PRESETS AND PATTERNS
+--------------------------------------------------------------------------------
+Preset shortcuts:
+  preset1  →  MMMM d, yyyy              (e.g. March 12, 2026)
+  preset2  →  d day of MMMM, yyyy       (e.g. 12th day of March, 2026)
+  preset3  →  MMMM, yyyy
+  preset4  →  (occurrence date format — used in charge/subpoena contexts)
+  preset5  →  MM/dd/yyyy                (e.g. 03/12/2026)
+
+Custom patterns (passed directly):
+  @[someDate.FormatDate(MMMM d, yyyy)]
+  @[someDate.FormatDate(M/dd/yyyy)]
+  @[someDate.FormatDate(yyyy)]
+  @[someDate.FormatDate(h:mm tt)]        -- 12-hour time with AM/PM
+  @[someDate.FormatDate(HH:mm t.t.)]     -- 24-hour time
+  @[someDate.FormatDate(dddd)]           -- weekday name
+  @[someDate.FormatDate(dddd MMMM d, yyyy)]
+  @[someDate.FormatDate(dddd, MMMM d, yyyy)]
+  @[someDate.FormatDate(dddd, MMMM d, yyyy,  h:mm tt)]
+
+Combined date + time examples:
+  @[SubEvent.StartDate.FormatDate(preset1)] at @[SubEvent.StartDate.FormatDate(h:mm tt)]
+  @[PTREvent.StartDate.FormatDate(dddd, MMMM d, yyyy,  h:mm tt)]
+
+--------------------------------------------------------------------------------
+4. SELECTORS — ACCESSING COLLECTION ITEMS
+--------------------------------------------------------------------------------
+When a variable holds multiple records, use a selector to access one:
+
+  .first      -- first record in collection
+  .last       -- last record in collection (also .Last())
+  .first()    -- method form (chaining)
+  .Last()     -- method form (chaining)
+  .Any()      -- boolean: true if collection has at least one record
+
+Examples:
+  @[Defendant.first.NameLastName]
+  @[Charges.first.CaseChargeID]
+  @[Charges.Last().CaseChargeID]
+  @[DefAtty.first.FormatName(F M L)]
+  @[Charges.Any()]
+
+--------------------------------------------------------------------------------
+5. FORMATNAME — NAME FORMATTING FUNCTION
+--------------------------------------------------------------------------------
+Syntax: @[variable.FormatName(format)]
+
+Format tokens:
+  F    = First name
+  M    = Middle name
+  L    = Last name
+  I    = first initial
+  IL   = first + last initials
+  FILI = First name + initials of remaining names (common for attorneys)
+
+Format examples and output:
+  FormatName(F L)      → "John Smith"
+  FormatName(F M L)    → "John Michael Smith"
+  FormatName(L)        → "Smith"
+  FormatName(F L).SetCasing(Title)   → "John Smith"
+  FormatName(F L).SetCasing(Upper)   → "JOHN SMITH"
+  FormatName(FILI)                   → "John M.S." (first + initials)
+
+Real examples:
+  @[Respondent.first.FormatName(F L)]
+  @[Respondent.first.FormatName(F L).SetCasing(Title)]
+  @[Defendant.first.FormatName(F M L)]
+  @[Defendant.first.FormatName(F M L).SetCasing(Upper)]
+  @[OBAAttorney.first.FormatName(FILI)]
+  @[cu.FormatName(FILI)]
+  @[Prosecutor.first.FormatName(F L).SetCasing(Title)]
+  @[Defense.first.FormatName(F L).SetCasing(Title)]
+  @[Investigator.first.FormatName(FILI)]
+
+--------------------------------------------------------------------------------
+6. SETCASING — TEXT CASING MODIFIER
+--------------------------------------------------------------------------------
+Can be chained after FormatName or on any string field.
+
+  .SetCasing(Upper)  -- ALL CAPS
+  .SetCasing(Title)  -- Title Case
+  .SetCasing(Lower)  -- lowercase
+
+Examples:
+  @[Defendant.first.FormatName(F M L).SetCasing(Upper)]
+  @[Defendant.first.NameFirstName.SetCasing(Upper)]
+  @[ChildName.Gender.GetLabel(98).SetCasing(Lower)]
+  @[Initials.SetCasing(Upper)]
+  @[Prejudice.SetCasing(Upper)]
+
+NOTE: Uppercase method forms also observed in some templates:
+  @[DEFENDANT.FIRST.NAMEFIRSTNAME.SETCASING(UPPER)]  (syntax is case-insensitive)
+
+--------------------------------------------------------------------------------
+7. GETLABEL — CODE-TO-LABEL LOOKUP
+--------------------------------------------------------------------------------
+Converts a stored code to a human-readable label using a lookup table ID.
+
+  Syntax: @[field.GetLabel(tableID)]
+  Also chained: @[field.GetLabel(tableID).SetCasing(Lower)]
+
+Common label table IDs observed:
+  6    -- assignment/personnel type/role  (e.g. "Lead Prosecutor", "Public Defender")
+  12   -- charge stage
+  27   -- event type  (e.g. "Jury Trial", "Sentencing")
+  48   -- involvement type/role  (e.g. "Mother", "Guardian")
+  59   -- plea type
+  97   -- eye color
+  98   -- gender label  (e.g. "Male", "Female")
+  99   -- hair color
+  101  -- race
+  121  -- division/subtype
+  130  -- prefix/salutation  (e.g. "Mr.", "Ms.", "Hon.")
+  160  -- charge class label
+  217  -- severity label  (e.g. "Felony", "Misdemeanor")
+  273  -- status label
+
+Examples:
+  @[ch.Severity.GetLabel(217)]             -- "Felony"
+  @[DefName.Gender.GetLabel(98)]           -- "Male" / "Female"
+  @[DefName.HairColor.GetLabel(99)]
+  @[DefName.EyeColor.GetLabel(97)]
+  @[DefName.Race.GetLabel(101)]
+  @[e.Type.GetLabel(27)]                   -- event type label
+  @[Assign.Type.GetLabel(6)]               -- role label
+  @[g.Type.GetLabel(48)]                   -- involvement type
+  @[Division.first.SubType.GetLabel(121)]
+  @[DefAttyPersonnel.Prefix.GetLabel(130)]
+  @[Plea.first.Type.GetLabel(59).SetCasing(Lower)]
+
+--------------------------------------------------------------------------------
+8. ISNULLOREMPTY — NULL/EMPTY CHECK
+--------------------------------------------------------------------------------
+Returns boolean true/false.
+
+  .IsNullOrEmpty()      -- method form
+  .IsNullOrEmpty()==true   -- explicit boolean check
+  .IsNullOrEmpty()==false
+
+Examples:
+  @[DefAtty.CaseAssignmentID.IsNullOrEmpty()]
+  @[Assignment.PersonnelID.IsNullOrEmpty()]
+  @[Involvement.NameID.IsNullOrEmpty()]
+  @[MotherName.DateOfBirth.IsNullOrEmpty()]
+  @[ch.Severity.IsNullOrEmpty()]
+  @[ch.OccurredEnd.IsNullorEmpty()]
+  @[PCharge.CaseChargeID.IsNullOrEmpty()]
+  @[JuryTrial.first.Status.IsNullOrEmpty()]
+  @[PTREvent.IsNullOrEmpty()]
+  @[DefAtty.CaseAssignmentID.IsNullOrEmpty()]==false
+
+--------------------------------------------------------------------------------
+9. FORMATPHONENUMBER
+--------------------------------------------------------------------------------
+Formats a raw phone number field.
+
+  Syntax: @[field.PhoneNumber.FormatPhoneNumber()]
+
+Examples:
+  @[CP.PhoneNumber.FormatPhoneNumber()]
+  @[Investigator.first.PhoneNumber.FormatPhoneNumber()]
+  @[InvestigatorPhone.first.PhoneNumber.FormatPhoneNumber()]
+  @[IntakeProsecutorPhone.first.PhoneNumber.FormatPhoneNumber()]
+  @[ProsecutorPhone.first.PhoneNumber.FormatPhoneNumber()]
+  @[RespondentPhone.first.PhoneNumber.FormatPhoneNumber()]
+  @[DefenseWorkPhone.first.PhoneNumber.FormatPhoneNumber()]
+  @[DefenseFaxPhone.first.PhoneNumber.FormatPhoneNumber()]
+  @[RespondentFaxPhone.first.PhoneNumber.FormatPhoneNumber()]
+  @[RespondentWorkPhone.first.PhoneNumber.FormatPhoneNumber()]
+
+--------------------------------------------------------------------------------
+10. CONDITIONAL CONSTRUCTS — IF / ELSEIF / ELSE / ENDIF
+--------------------------------------------------------------------------------
+Syntax:
+  @[If(condition)]  ...content...
+  @[ElseIf(condition)]  ...content...
+  @[Else]  ...content...
+  @[EndIf]
+
+Condition forms:
+  Equality (string comparison, quotes around token value):
+    @[if('@[DefName.Gender]'=='M')]
+    @[if('@[DefName.Gender]' == 'Male')]
+    @[if('@[myCase.Type]' == 'CT005')]
+
+  Boolean check:
+    @[if(@[PubDef.Any()] == true)]
+    @[if(@[DefAtty.Any()] == false)]
+    @[if(@[ChildSSN.Any()] == true)]
+
+  Null check:
+    @[if(@[DefAtty.CaseAssignmentID.IsNullOrEmpty()]==false)]
+    @[if(@[Assignment.PersonnelID.IsNullOrEmpty()]==false)]
+    @[if(@[MotherName.DateOfBirth.IsNullOrEmpty()]==true)]
+
+  Comparison operators:
+    ==    equality
+    =     equality (alternate form)
+    !=    not equal (observed in some contexts)
+    >     greater than (in date contexts)
+    IN    membership: @[if(@[CaseInfo.Type] IN 'JC001','JC002')]
+
+  Logical operators (in condition):
+    &&    logical AND
+    ||    logical OR
+    Example: @[if('@[myCase.Type]' == 'CT005' || '@[myCase.Type]' == 'CT006')]
+    Example: @[if(@[CaseInfo.Type] IN 'JC001','JC002' && @[CaseInfo.Status] == 'OPEN')]
+
+  ID comparison:
+    @[if(@[c.CaseChargeID]==@[Charges.First().CaseChargeID])]
+    @[if(@[c.CaseChargeID]==@[Charges.Last().CaseChargeID])]
+
+Full examples:
+
+Gender pronoun block:
+  @[if('@[DefName.Gender]'=='M')]he@[elseif('@[DefName.Gender]'=='F')]she@[else]he/she@[endif]
+  @[if('@[DefName.Gender]'=='M')]his@[elseif('@[DefName.Gender]'=='F')]her@[else]his/her@[endif]
+  @[if('@[DefName.Gender]'=='M')]him@[elseif('@[DefName.Gender]'=='F')]her@[else]him/her@[endif]
+  @[if('@[DefName.Gender]'=='M')]Mr.@[elseif('@[DefName.Gender]'=='F')]Ms.@[else]Mr./Ms.@[endif]
+  @[if('@[DefName.Gender]'=='Male')]himself@[elseif('@[DefName.Gender]'=='Female')]herself@[else]himself/herself@[endif]
+
+Salutation for Name Type (business vs. person):
+  @[if('@[VicName.Type]' == 'AGY')]To Whom It May Concern@[elseif('@[VicName.Type]' == 'BUS')]To Whom It May Concern@[else]Dear @[endif]
+
+Defense attorney address/defendant fallback:
+  @[if(@[DefAtty.Any()] = true)]@[DefAtty.first.FormatName(F M L)]
+    @[DefAttyAddress.first.StreetAddress]
+    @[DefAttyAddress.first.City], @[DefAttyAddress.first.State] @[DefAttyAddress.first.Zip]
+    @[Defendant.first.FormatName(F M L)] c/o counsel
+  @[else]@[Defendant.first.FormatName(F M L)]
+    @[DefAddress.first.StreetAddress]
+    @[DefAddress.first.City], @[DefAddress.first.State] @[DefAddress.first.Zip]
+  @[endif]
+
+Case type branching:
+  @[if('@[myCase.Type]' == 'CT005')]In the Matter of
+  @[elseif('@[myCase.Type]' == 'CT006')]In the Interest of
+  @[else]State of Kansas vs.
+  @[endif]
+
+CoDefendant plural check:
+  @[if(@[CoDefendant.Any()]==true)]S@[else]@[endif]
+
+Severity null check (charge display):
+  @[if(@[ch.Severity.IsNullOrEmpty()]==true)]@[else] a @[ch.Severity.GetLabel(217)]@[endif]
+
+NOTE: @[endelse]@[endif] double-close form is also observed (some parser variants):
+  @[if(@[DefGender.Gender] == 'M')]he@[elseif(@[DefGender.Gender] == 'F')]she@[else]he/she@[endelse]@[endif]
+
+--------------------------------------------------------------------------------
+11. FOREACH / ENDFOREACH — ITERATION
+--------------------------------------------------------------------------------
+Syntax (collection has ForEach method):
+  @[CollectionVar.ForEach(itemVar)] ... @[CollectionVar.EndForEach]
+
+Syntax (standalone Foreach with IN):
+  @[Foreach(itemVar IN CollectionVar)] ... @[EndForEach]
+
+Examples:
+  @[Charges.ForEach(c)] @[c.SystemStatuteOffense] @[Charges.EndForEach]
+  @[Victims.ForEach(vic)] @[vic.FormatName(F M L)] @[Victims.EndForEach]
+  @[Events.Foreach(e)] @[e.StartDate.FormatDate(preset1)] @[Events.EndForEach]
+  @[EA.ForEach(Assig)] @[Assig.FormatName(F M L)] @[EA.EndForEach]
+  @[EI.ForEach(Involve)] @[Involve.FormatName(F M L)] @[EI.EndForEach]
+  @[FutureEvents.ForEach(e)]@[if(@[e.Type]=='SNT')]@[e.StartDate.FormatDate(dddd, MMMM d, yyyy)] at @[e.StartDate.FormatDate(h:mm tt)]@[else]@[endif]@[FutureEvents.EndForEach]
+  @[RespondentPhone.ForEach(RP)] @[RP.PhoneNumber.FormatPhoneNumber()] @[RespondentPhone.EndForEach]
+  @[VWOEmail.ForEach(em)] @[em.EmailAddress] @[VWOEmail.EndForEach]
+  @[EIAddr.ForEach(InvolveAddr)] @[InvolveAddr.StreetAddress] @[EIAddr.EndForEach]
+  @[AssignPhones.ForEach(AssignPhone)] @[AssignPhone.PhoneNumber] @[AssignPhones.EndForEach]
+
+Accessing First/Last inside ForEach for conditional comma/punctuation:
+  @[Charges.ForEach(c)]
+    @[if(@[c.CaseChargeID]==@[Charges.First().CaseChargeID])]
+      @[c.SystemStatuteOffense]
+    @[elseif(@[c.CaseChargeID]==@[Charges.Last().CaseChargeID])] and @[c.SystemStatuteOffense]
+    @[else], @[c.SystemStatuteOffense]
+    @[endif]
+  @[Charges.EndForEach]
+
+Ticket numbers with comma separation:
+  @[TicketNumbers.Foreach(tn)]@[tn.Number]@[if(@[tn.CaseAgencyID]==@[TicketNumbers.Last().CaseAgencyID])]@[else], @[endif]@[TicketNumbers.EndForEach]
+
+Events enumeration (first / middle / last punctuation):
+  @[Events.Foreach(e)]
+    @[if(@[e.EventID] == @[Events.First().EventID])]
+      @[e.Type.GetLabel(27)] on @[e.StartDate.FormatDate(M/dd/yyyy)]
+    @[elseif(@[e.EventID] == @[Events.Last().EventID])], and @[e.Type.GetLabel(27)] on @[e.StartDate.FormatDate(M/dd/yyyy)]
+    @[else], @[e.Type.GetLabel(27)] on @[e.StartDate.FormatDate(M/dd/yyyy)]
+    @[endif]
+  @[Events.EndForEach]
+
+--------------------------------------------------------------------------------
+12. CCA / ENDCCA — COMMA-SEPARATED CONCATENATION
+--------------------------------------------------------------------------------
+Cca generates a comma-separated list from a collection or expression.
+
+  Syntax: @[Collection.Cca(itemVar)] ... content ... @[Collection.EndCca]
+  Short form: @[Cca(expression)]
+
+Examples:
+  @[Charges.Cca(ch)]@[ch.CountNumber]: @[ch.SystemStatuteCode] @[ch.SystemStatuteOffense]@[Charges.EndCca]
+  @[Charges.Cca(ch)]@[ch.CountNumber] ~ @[ch.SystemStatuteCode] @[ch.SystemStatuteOffense]@[Charges.EndCca]
+  @[Cca(RelCharges.SystemStatuteOffense)]
+  @[Cca(Durations.Agreement)]
+  @[Cca(Charges.Occurred.FormatDate(preset1))]
+  @[Cca(CoDefendant.FormatName(F M L))]
+  @[Cca(IntakeRules)]
+  @[Cca(Reasons)]
+  @[Children.Cca(child)]@[child.FormatName(F M L)]@[Children.EndCca]
+  @[Cca(promCharges(ch))]@[ch.CountNumber] ~ @[ch.SystemStatuteCode] @[ch.SystemStatuteOffense]@[promCharges.EndCca]
+
+--------------------------------------------------------------------------------
+13. CREATEVAR — VARIABLE DECLARATION AND DATA BINDING
+--------------------------------------------------------------------------------
+Creates a named variable by querying a data source.
+
+  Syntax: @[CreateVar(@varName, @DataSource.QueryMethod(params))]
+  Or with chained .first: @[CreateVar(@varName, @DataSource.GetByQuery(params)).first]
+
+The @ prefix on the variable name is the declaration marker.
+After creation, use the variable WITHOUT @ prefix and WITHOUT @[ ]:
+  @[CreateVar(@Defendant, ...)] → access fields as @[Defendant.first.NameLastName]
+
+Common CreateVar patterns:
+
+From CaseInvolvement (case participants):
+  @[CreateVar(@Defendant,@CaseInvolvement.GetByQuery("CaseID":@[builtin.CaseID],"Type":"DEF","IsActive":true))]
+  @[CreateVar(@Respondent,@CaseInvolvement.GetByQuery("CaseID":@[builtin.CaseID],"Type":"RES","IsActive":true))]
+  @[CreateVar(@Complainant,@CaseInvolvement.GetByQuery("CaseID":@[builtin.CaseID],"Type":"COM","IsActive":true))]
+  @[CreateVar(@Victim,@CaseInvolvement.GetByQuery("CaseID":@[builtin.CaseID],"Type":"CIT08","IsActive":true))]
+  @[CreateVar(@Witness,@CaseInvolvement.GetByQuery("CaseID":@[builtin.CaseID],"Type":"W","IsActive":true))]
+  @[CreateVar(@Child,@CaseInvolvement.GetByQuery("CaseID":@[builtin.CaseID],"Type":"CIT22","IsActive":true))]
+  @[CreateVar(@Mother,@CaseInvolvement.GetByQuery("CaseID":@[builtin.CaseID],"Type":"CIT13","IsActive":true))]
+  @[CreateVar(@Father,@CaseInvolvement.GetByQuery("CaseID":@[builtin.CaseID],"Type":"CIT23","IsActive":true))]
+  @[CreateVar(@PIP,@CaseInvolvement.GetByQuery("CaseID":@[builtin.CaseID],"Type":"CIT07","IsActive":true))]
+
+From CaseAssignment (legal personnel on case):
+  @[CreateVar(@OBAAttorney,@CaseAssignment.GetByQuery("CaseID":@[builtin.CaseID],"Type":"OBA","IsActive":true))]
+  @[CreateVar(@Prosecutor,@CaseAssignment.GetByQuery("CaseID":@[builtin.CaseID],"Type":"PROSATTY","IsActive":true))]
+  @[CreateVar(@DefAtty,@CaseAssignment.GetByQuery("CaseID":@[builtin.CaseID],"Type":"DEF ATTY","IsActive":true))]
+  @[CreateVar(@Judge,@CaseAssignment.GetByQuery("CaseID":@[builtin.CaseID],"Type":"JDG","IsActive":true))]
+  @[CreateVar(@PubDef,@CaseAssignment.GetByQuery("CaseID":@[builtin.CaseID],"Type":"OPD","IsActive":true))]
+  @[CreateVar(@CityAtty,@CaseAssignment.GetByQuery("CaseID":[@[builtin.CaseID]],"Type":"[P,A]","IsActive":true))]
+  @[CreateVar(@LeadProsAtty,@CaseAssignment.GetByQuery("CaseID":@[builtin.CaseID],"Type":"CIT15","IsActive":true))]
+  @[CreateVar(@RetCounsel,@CaseAssignment.GetByQuery("CaseID":@[builtin.CaseID],"Type":"CIT19","IsActive":true))]
+  @[CreateVar(@AppCounsel,@CaseAssignment.GetByQuery("CaseID":@[builtin.CaseID],"Type":"CIT20","IsActive":true))]
+  @[CreateVar(@Officer,@CaseAssignment.GetByQuery("CaseID":[@[builtin.CaseID]],"Type":"[O]","IsActive":true))]
+
+Multiple types (array notation):
+  @[CreateVar(@CityAtty,@CaseAssignment.GetByQuery("CaseID":[@[builtin.CaseID]],"Type":"[P,A]","IsActive":true))]
+  @[CreateVar(@Officer,@CaseAssignment.GetByQuery("CaseID":[@[builtin.CaseID]],"Type":"[O]","IsActive":true))]
+  @[CreateVar(@DefAttorney,@CaseAssignment.GetByQuery("CaseID":@[builtin.CaseID],"Type":"DA","IsActive":true))]
+
+From CaseAgency (case number sources):
+  @[CreateVar(@ProsNum,@CaseAgency.GetByQuery("CaseID":@[builtin.CaseID],"Type":"PROS","IsPrimary":true))]
+  @[CreateVar(@CaseNumber,@CaseAgency.GetByQuery("CaseID":@[builtin.CaseID],"IsPrimary":true))]
+  @[CreateVar(@CourtNum,@CaseAgency.GetByQuery("CaseID":@[builtin.CaseID],"NumberType":"CRT","IsPrimary":true))]
+  @[CreateVar(@LeadNumber,@CaseAgency.GetByQuery("CaseID":@[builtin.CaseID],"IsLead":true).first)]
+  @[CreateVar(@ReportNum,@CaseAgency.GetByQuery("CaseID":@[builtin.CaseID],"NumberType":"REPORTNUMBER","IsActive":true))]
+  @[CreateVar(@IPNumber,@CaseAgency.GetByQuery("CaseID":@[builtin.CaseID],"NumberType":"FILENUMBER","IsActive":true))]
+  @[CreateVar(@TicketNumbers,@CaseAgency.GetByQuery("CaseID":@[builtin.CaseID],"NumberType":"TICKETNUMBER"))]
+  @[CreateVar(@TCN,@CaseAgency.GetByQuery("CaseID":@[builtin.CaseID],"NumberType":"TCN"))]
+
+From NameAddress (mailing/physical address by NameID):
+  @[CreateVar(@DefAddr,@NameAddress.GetByQuery("NameID":@[Defendant.first.NameID],"IsActive":true))]
+  @[CreateVar(@ComplainantAddress,@NameAddress.GetByQuery("NameID":@[Complainant.first.NameID]))]
+  @[CreateVar(@WitAddress,@NameAddress.GetByQuery("NameID":@[Wit.first.NameID]))]
+  @[CreateVar(@ChildAddress,@NameAddress.GetByQuery("NameID":@[Child.first.NameID],"IsActive":true))]
+  @[CreateVar(@EIAddr,@NameAddress.GetByQuery("NameID":@[Involve.NameID],"IsActive":true))]
+  @[CreateVar(@EIAddrOTL,@NameAddress.GetByQuery("NameID":@[Involve.NameID],"Type":"M","IsActive":true))]
+
+From PersonnelAddress (address by PersonnelID):
+  @[CreateVar(@DefAttyAddr,@PersonnelAddress.GetByQuery("PersonnelID":@[DefAtty.first.PersonnelID],"IsActive":true))]
+  @[CreateVar(@AssignAddr,@PersonnelAddress.GetByQuery("PersonnelID":@[Assign.PersonnelID],"IsActive":true))]
+  @[CreateVar(@RetCounAddress,@PersonnelAddress.GetByQuery("PersonnelID":@[RetCounsel.PersonnelID]))]
+
+From NamePhone:
+  @[CreateVar(@WitPhone,@NamePhone.GetByQuery("NameID":@[Wit.first.NameID]))]
+  @[CreateVar(@EIPhone,@NamePhone.GetByQuery("NameID":@[Involve.NameID],"IsActive":true))]
+
+From PersonnelPhone:
+  @[CreateVar(@AssignPhones,@PersonnelPhone.GetByQuery("PersonnelID":@[Assign.PersonnelID],"IsActive":true))]
+
+From NameEmail:
+  @[CreateVar(@DefEmail,@NameEmail.GetByQuery("NameID":@[Defendant.first.NameID]).first)]
+  @[CreateVar(@VWOEmail,@NameEmail.GetByQuery("NameID":@[VicWitOff.NameID],"IsActive":true))]
+
+From PersonnelEmail:
+  @[CreateVar(@email,@PersonnelEmail.GetByQuery("PersonnelID":@[CityAtty.first.PersonnelID]))]
+  @[CreateVar(@PubDefEmail,@PersonnelEmail.GetByQuery("PersonnelID":@[PubDef.first.PersonnelID]).first)]
+  @[CreateVar(@DefAttyEmail,@PersonnelEmail.GetByQuery("PersonnelID":@[DefAtty.first.PersonnelID]))]
+
+From Name (demographics/biographic record by NameID):
+  @[CreateVar(@DefName,@Name.GetByID(@[Defendant.first.NameID]))]
+  @[CreateVar(@ChildName,@Name.GetByID(@[Child.first.NameID]))]
+  @[CreateVar(@VicName,@Name.GetByID(@[Vic.NameID]))]
+  @[CreateVar(@PIPName,@Name.GetByID(@[PIP.first.NameID]))]
+
+From Personnel (personnel record by PersonnelID):
+  @[CreateVar(@DefAttyName,@Personnel.GetByID(@[DefAttorney.first.PersonnelID]))]
+  @[CreateVar(@AppCounselPers,@Personnel.GetByID(@[AppCounsel.first.PersonnelID]))]
+  @[CreateVar(@RetCounselPers,@Personnel.GetByID(@[RetCounsel.first.PersonnelID]))]
+  @[CreateVar(@ProsecutorTitle,@Personnel.GetByQuery("PersonnelID":[@[Prosecutor.first.PersonnelID]]))]
+
+From SystemUser:
+  @[CreateVar(@CurrentUser,@SystemUser.GetByID(@[builtin.CurrentUserUserID]))]
+
+From current user (builtin shorthand):
+  @[CreateVar(@cu,@Personnel.GetByID(@[builtin.CurrentUserPersonnelID]))]
+
+From Case:
+  @[CreateVar(@myCase,@Case.GetByID(@[builtin.CaseID]))]
+  @[CreateVar(@Cse,@Case.GetByID(@[builtin.CaseID]))]
+
+From Event:
+  @[CreateVar(@Bench,@Event.GetByQuery("CaseID":@[builtin.CaseID],"Type":"B","OrderBy":"StartDate","OrderAscending":true))]
+  @[CreateVar(@IA,@Event.GetByQuery("CaseID":@[builtin.CaseID],"Type":"IA"))]
+  @[CreateVar(@FutureEvents,@Event.GetByQuery("CaseID":@[builtin.CaseID],"Status":"P","StartDateGreaterThan":@[builtin.Today]))]
+  @[CreateVar(@SubEvent,@Event.GetByQuery("CaseID":@[builtin.CaseID]).first)]
+  @[CreateVar(@JuryTrial,@Event.GetByQuery("CaseID":@[builtin.CaseID],"Type":"JuryTrial","IsActive":true))]
+
+From EventAssignment:
+  @[CreateVar(@EA,@EventAssignment.GetByQuery("EventID":@[SubEvent.EventID],"IsActive":true))]
+  @[CreateVar(@EA,@EventAssignment.GetByQuery("EventID":@[futEvent.EventID],"Status":"SUB","IsActive":true))]
+
+From EventInvolvement:
+  @[CreateVar(@EI,@EventInvolvement.GetByQuery("EventID":@[SubEvent.EventID],"IsActive":true))]
+  @[CreateVar(@Involvements,@EventInvolvement.GetByQuery("EventID":@[futEvent.EventID],"Status":"SUB","IsActive":true))]
+
+From CaseCharge:
+  @[CreateVar(@Charges,@CaseCharge.GetByQuery("CaseID":@[builtin.CaseID]))]
+  @[CreateVar(@Charges,@CaseCharge.GetByQuery("CaseID":@[builtin.CaseID],"OrderBy":"CountNumber"))]
+  @[CreateVar(@PrimCharge,@CaseCharge.GetByQuery("CaseID":@[builtin.CaseID],"IsPrimary":true).first)]
+
+From CasePleaAgreement:
+  @[CreateVar(@PleaOffer,@CasePleaAgreement.GetByQuery("CaseID":@[builtin.CaseID],"CaseChargeID":@[charge.CaseChargeID],"Type":"[O]"))]
+  @[CreateVar(@Durations,@CasePleaAgreement.GetByQuery("CaseID":@[builtin.CaseID],"Type":['DU001']))]
+  @[CreateVar(@Terms,@CasePleaAgreement.GetByQuery("CaseID":@[builtin.CaseID],"Type":['TC001','TC002','TC003']))]
+  @[CreateVar(@Fees,@CasePleaAgreement.GetByQuery("CaseID":@[builtin.CaseID],"Type":["FC001","FC002","FC003"]))]
+
+From CaseSentence:
+  @[CreateVar(@Sentence,@CaseSentence.GetByQuery("CaseID":@[builtin.CaseID],"OrderBy":"CaseSentenceID","OrderAscending":false)).first]
+
+From CaseFee:
+  @[CreateVar(@Fee,@CaseFee.GetByQuery("CaseID":@[builtin.CaseID]))]
+
+From CaseStatusHistory:
+  @[CreateVar(@CaseClosedStatus,@CaseStatusHistory.GetByQuery("CaseID":@[builtin.CaseID],"Status":"CaseSentenceID"))]
+
+From CaseChargeLanguage:
+  @[CreateVar(@Language,@CaseChargeLanguage.GetByQuery("CaseChargeID":@[ch.CaseChargeID]))]
+
+From NameNumber (ID numbers — SSN, DL, DOC):
+  @[CreateVar(@DEFSSN,@NameNumber.GetByQuery("NameID":@[DefName.NameID],"Type":"SSN"))]
+  @[CreateVar(@PIPDL,@NameNumber.GetByQuery("NameID":@[PIPName.NameID],"Type":"DL"))]
+
+From PersonnelNumber:
+  @[CreateVar(@AssignPersonnelSSN,@PersonnelNumber.GetByQuery("PersonnelID":@[Assignment.PersonnelID],"Type":"SSN"))]
+
+From PersonnelElement (bar numbers, division, title):
+  @[CreateVar(@BarNum,@PersonnelElement.GetByQuery("PersonnelID":@[DefAttorney.first.PersonnelID],"Type":"TITLE"))]
+  @[CreateVar(@Division,@PersonnelElement.GetByQuery("PersonnelID":@[Judge.first.PersonnelID],"Type":"DIVIS"))]
+
+From SystemAgency:
+  @[CreateVar(@Agency,@SystemAgency.GetByID(@[CourtNum.first.SystemAgencyID]))]
+  @[CreateVar(@Agency,@SystemAgency.GetByQuery("Code":@[futEvent.Location]))]
+
+From SystemAgencyAddress:
+  @[CreateVar(@AgencyAddr,@SystemAgencyAddress.GetByQuery("SystemAgencyID":@[Agency.first.SystemAgencyID]))]
+  @[CreateVar(@EventAddress,@SystemAgencyAddress.GetByQuery("SystemAgencyID":@[Agency.first.SystemAgencyID]))]
+
+GetByID shorthand (direct record lookup):
+  @[CreateVar(@DefName,@Name.GetByID(@[Defendant.first.NameID]))]
+  @[CreateVar(@cu,@Personnel.GetByID(@[builtin.CurrentUserPersonnelID]))]
+  @[CreateVar(@myCase,@Case.GetByID(@[builtin.CaseID]))]
+
+GetByID via CaseAssignment:
+  @[CreateVar(@DefAtty,@CaseAssignment.GetByID(@[AppCounsel.first.CaseAssignmentID]))]
+
+--------------------------------------------------------------------------------
+14. QUERY PARAMETERS — GETBYQUERY OPTIONS
+--------------------------------------------------------------------------------
+Parameters are key-value pairs inside the GetByQuery call.
+
+  "CaseID": @[builtin.CaseID]
+  "Type": "DEF"                         -- single type code
+  "Type": "[DEF,CO]"                    -- multiple types (array notation)
+  "Type": ['TC001','TC002','TC003']      -- array literal form
+  "Type": ["FC001","FC002"]             -- array literal form (double quotes)
+  "IsActive": true
+  "IsActive": false
+  "IsPrimary": true
+  "IsLead": true
+  "NumberType": "CRT"
+  "NumberType": "SSN"
+  "NumberType": "DL"
+  "NumberType": "REPORTNUMBER"
+  "NumberType": "TICKETNUMBER"
+  "NumberType": "FILENUMBER"
+  "NumberType": "CAUSENUMBER"
+  "NumberType": "PROS"
+  "Status": "P"                         -- pending events
+  "Status": "SUB"                       -- subpoena status
+  "StartDateGreaterThan": @[builtin.Today]
+  "OrderBy": "StartDate"
+  "OrderBy": "CountNumber"
+  "OrderBy": "CaseSentenceID"
+  "OrderAscending": true
+  "OrderAscending": false
+  "NameID": @[Defendant.first.NameID]
+  "PersonnelID": @[Assign.PersonnelID]
+  "EventID": @[SubEvent.EventID]
+  "CaseChargeID": @[charge.CaseChargeID]
+  "SystemAgencyID": @[Agency.first.SystemAgencyID]
+
+--------------------------------------------------------------------------------
+15. DATA SOURCES (OBJECT TYPES)
+--------------------------------------------------------------------------------
+These are the queryable/lookupable data entities in Pine.
+
+  Case                    -- case record
+  CaseInvolvement         -- parties involved in the case (defendants, victims, etc.)
+  CaseAssignment          -- personnel assigned to the case (attorneys, judges, officers)
+  CaseAgency              -- agency/case numbers (court numbers, DA numbers, etc.)
+  CaseCharge              -- charges on the case
+  CasePleaAgreement       -- plea terms, durations, conditions, fees
+  CaseSentence            -- sentencing record
+  CaseFee                 -- fee records
+  CaseStatusHistory       -- case status change history
+  CaseChargeLanguage      -- charge language/text
+  Event                   -- court events / hearings
+  EventAssignment         -- personnel assigned to a specific event
+  EventInvolvement        -- parties involved in a specific event
+  Name                    -- name/person demographic record
+  NameAddress             -- addresses for a Name record
+  NamePhone               -- phone numbers for a Name record
+  NameEmail               -- email addresses for a Name record
+  NameNumber              -- ID numbers (SSN, DL, DOC) for a Name record
+  Personnel               -- personnel record (staff/attorneys)
+  PersonnelAddress        -- addresses for a Personnel record
+  PersonnelPhone          -- phone numbers for a Personnel record
+  PersonnelEmail          -- email addresses for a Personnel record
+  PersonnelNumber         -- ID numbers for a Personnel record
+  PersonnelElement        -- personnel attributes (bar number, division, title)
+  SystemUser              -- system login user record
+  SystemAgency            -- agency/court entity
+  SystemAgencyAddress     -- address for a system agency
+
+--------------------------------------------------------------------------------
+16. FIELD REFERENCE — NAME / PERSON FIELDS
+--------------------------------------------------------------------------------
+Fields on a CaseInvolvement row (after .first or in ForEach):
+  .NameFirstName
+  .NameLastName
+  .NameID
+  .FormatName(format)
+  .CaseInvolvementID
+  .DateOfBirth.FormatDate(preset)     -- only if involvement has DOB
+
+Fields on a Name record (via GetByID(@[...NameID])):
+  .Gender                      -- raw code: "M" / "F" or "Male" / "Female"
+  .Gender.GetLabel(98)          -- "Male" / "Female"
+  .DateOfBirth.FormatDate(preset)
+  .DateOfBirth.IsNullOrEmpty()
+  .HairColor.GetLabel(99)
+  .EyeColor.GetLabel(97)
+  .Race.GetLabel(101)
+  .Height
+  .Weight
+  .NameID
+  .Type                        -- "AGY" / "BUS" / person (for entity type check)
+
+Fields on a Personnel record (via GetByID(@[...PersonnelID])):
+  .PersonnelFirstName
+  .PersonnelLastName
+  .PersonnelID
+  .FormatName(format)
+  .Title
+  .Gender
+  .Prefix.GetLabel(130)
+  .DateOfBirth.FormatDate(preset)
+
+--------------------------------------------------------------------------------
+17. FIELD REFERENCE — ADDRESS FIELDS
+--------------------------------------------------------------------------------
+Fields on NameAddress or PersonnelAddress records:
+  .StreetAddress
+  .StreetAddress.SetCasing(Title)
+  .City
+  .City.SetCasing(Title)
+  .State
+  .Zip
+  .Type                    -- address type (e.g. "M" for mailing)
+  .NameAddressID           -- used for comparisons inside ForEach
+  .Any()
+
+Address block inline pattern:
+  @[DefAddr.first.StreetAddress]
+  @[DefAddr.first.City], @[DefAddr.first.State] @[DefAddr.first.Zip]
+
+Address block with SetCasing:
+  @[ComplainantAddress.first.StreetAddress.SetCasing(Title)]
+  @[ComplainantAddress.first.City.SetCasing(Title)]
+  @[ComplainantAddress.first.State]
+  @[ComplainantAddress.first.Zip]
+
+--------------------------------------------------------------------------------
+18. FIELD REFERENCE — CONTACT FIELDS
+--------------------------------------------------------------------------------
+Phone:
+  .PhoneNumber
+  .PhoneNumber.FormatPhoneNumber()
+  .NamePhoneID               -- for last-item comparison in ForEach
+  .PersonnelPhoneID
+
+Email:
+  .EmailAddress
+
+--------------------------------------------------------------------------------
+19. FIELD REFERENCE — CASE NUMBER FIELDS (CaseAgency)
+--------------------------------------------------------------------------------
+  .Number                  -- the case/agency number string
+  .SystemAgencyID
+  .SystemAgencyName
+  .CaseAgencyID            -- used for comparisons
+  .Status.GetLabel(273)    -- department/status label
+
+--------------------------------------------------------------------------------
+20. FIELD REFERENCE — CHARGE FIELDS (CaseCharge)
+--------------------------------------------------------------------------------
+  .CaseChargeID
+  .CountNumber
+  .SystemStatuteCode       -- statute number (e.g. "13-1201")
+  .SystemStatuteOffense    -- offense name (e.g. "Assault")
+  .Severity                -- raw severity code
+  .Severity.GetLabel(217)  -- "Felony", "Misdemeanor", etc.
+  .Severity.IsNullOrEmpty()
+  .Class                   -- charge class (e.g. "A", "B")
+  .Class.GetLabel(160)
+  .Stage.GetLabel(12)
+  .Occurred.FormatDate(preset)
+  .OccurredEnd.FormatDate(preset)
+  .OccurredEnd.IsNullorEmpty()
+  .LocationDescription
+  .Decision
+  .IsPrimary
+
+--------------------------------------------------------------------------------
+21. FIELD REFERENCE — EVENT FIELDS
+--------------------------------------------------------------------------------
+  .EventID
+  .Type                    -- raw event type code
+  .Type.GetLabel(27)       -- human-readable event type
+  .StartDate.FormatDate(preset)
+  .LocationDescription
+  .Status
+
+--------------------------------------------------------------------------------
+22. FIELD REFERENCE — PLEA AGREEMENT FIELDS (CasePleaAgreement)
+--------------------------------------------------------------------------------
+  .CasePleaAgreementID
+  .Agreement               -- agreement text
+  .Note
+  .Type                    -- plea agreement type code
+
+--------------------------------------------------------------------------------
+23. PROMPT VARIABLES
+--------------------------------------------------------------------------------
+Prompts are user-entered values at document generation time.
+They appear as plain identifiers (no data source prefix).
+
+Common prompt variables observed:
+  @[DateOfLetter]
+  @[DateLetterReceived]
+  @[Remarks]
+  @[MoreInfo]
+  @[Signature]
+  @[Initials]
+  @[YesNo]
+  @[IsIsNot]
+  @[Agree]
+  @[Employer]
+  @[Caution]
+  @[Extradition]
+  @[DiversionLength]
+  @[DiversionFeeDue]
+  @[DiversionFeeDueDt]
+  @[AgreementDt]
+  @[TrustDate]
+  @[EthicsDate]
+  @[DCDate]
+  @[TotalDue]
+  @[TotalFines]
+  @[CourtCosts]
+  @[TypeOfSanction]
+  @[Typeofagreement]
+  @[Typeofdiversion]
+  @[ChildSupport]
+  @[AmtInArrears]
+  @[DueDt]
+  @[PRAcceptanceDate]
+  @[PRCMeeting]
+  @[PDJOrder]
+  @[Prejudice]
+  @[PoPV]
+  @[MotionSentVia]
+  @[BasisforDismissal]
+  @[DeclineReason]
+  @[DeclineExplanation]
+  @[AddViol]
+  @[WAR]
+  @[CarType]
+  @[TagNumState]
+  @[ScarsMarkTat]
+  @[BAC.Value]
+  @[BACGreater.Text]
+  @[PlacementInfo]
+  @[DoctorList]
+  @[protectionReasons]
+  @[detailsMother]
+  @[detailsFather]
+  @[MCFacts]
+  @[MCDays]
+  @[MCYesNo]
+  @[MCPrays]
+  @[MEDetails]
+  @[SubNeeded]
+  @[NumOfDays_Bullet3]
+  @[NumOfDays_NumOfDays]
+  @[NumOfDays_YesNo]
+  @[CertofServiceDocument]
+  @[CertofServiceType]
+  @[CIP_Y_N]
+  @[PromptName]
+  @[PromptAddress]
+  @[PromptCity]
+  @[PromptState]
+  @[PromptZip]
+  @[PromptMrMs]
+  @[Conflict_Choice]
+  @[DefendantAppearance]
+  @[Subpoena]
+  @[PDJOrder]
+  @[SecondYear]
+  @[TWELVE]
+  @[DFP]
+  @[AGENCY.CODE]
+
+Prompt with FormatName (when prompt is an Involvement/Assignment):
+  @[PromptWitness.FormatName(F M L)]
+  @[PromptWitness.NameID]
+
+--------------------------------------------------------------------------------
+24. SUBDOCUMENT — EMBEDDED SUB-TEMPLATE
+--------------------------------------------------------------------------------
+Inserts another template (subdocument) by its numeric ID.
+
+  @[SubDocument(id)]
+  @[Subdocument(id)]    (alternate casing)
+
+Observed SubDocument IDs and their purposes:
+  @[SubDocument(3)]    -- (legacy) Subdoc 3
+  @[SubDocument(4)]    -- (legacy) Subdoc 4
+  @[SubDocument(5)]    -- (legacy) Subdoc 5
+  @[SubDocument(7)]    -- PD_Letterhead
+  @[SubDocument(8)]    -- SubLetterHead / PD_EndOfLetter
+  @[SubDocument(9)]    -- PD_Header
+  @[SubDocument(11)]   -- SubAddressBlock
+  @[SubDocument(15)]   -- SubCINC_JVHeader / Signature block
+  @[SubDocument(21)]   -- SubAdultDocHeader
+  @[SubDocument(27)]   -- By Digital Signature
+  @[SubDocument(30)]   -- AttySigsNew
+  @[SubDocument(34)]   -- (general subdoc)
+  @[SubDocument(38)]   -- PD_Sig_CertOfServiceDigSig
+  @[SubDocument(45)]   -- PD_JV_Header
+  @[SubDocument(48)]   -- PD_JV_Sig_CertofService
+  @[SubDocument(53)]   -- JUVHeader
+  @[SubDocument(57)]   -- PD_Sig_CertofService
+  @[SubDocument(192)]  -- (general subdoc)
+
+--------------------------------------------------------------------------------
+25. CU — CURRENT USER SHORTHAND
+--------------------------------------------------------------------------------
+"cu" is a pre-defined variable representing the currently logged-in user
+(typically the attorney or staff generating the document).
+
+  @[cu.FormatName(FILI)]               -- current user initials-style name
+  @[cu.FormatName(F L).SetCasing(Title)]
+  @[curUser.PersonnelFirstName]        -- alternate form
+  @[curUser.PersonnelLastName]
+  @[CurrentUser.PersonnelFirstName]    -- via CreateVar(@CurrentUser,@SystemUser.GetByID(@[builtin.CurrentUserUserID]))
+  @[CurrentUser.PersonnelLastName]
+
+--------------------------------------------------------------------------------
+26. COMMON TEMPLATE PATTERNS — OBA / BAR ASSOCIATION CONTEXT
+--------------------------------------------------------------------------------
+These are real patterns seen in OBA (Oklahoma Bar Association) or similar 
+bar association disciplinary templates:
+
+Standard header block (typically appears in every letter):
+  @[builtin.today.FormatDate(preset1)]
+  @[Respondent.first.NameFirstName] @[Respondent.first.NameLastName]
+  @[RespondentAddress.first.StreetAddress]
+  @[RespondentAddress.first.City], @[RespondentAddress.first.State] @[RespondentAddress.first.Zip]
+
+  Re: @[Complainant.first.NameFirstName] @[Complainant.first.NameLastName]
+  Prosecution No.: @[ProsNum.first.Number]
+
+Closing block:
+  Sincerely,
+  @[OBAAttorney.first.FormatName(FILI)]
+  @[cu.FormatName(FILI)]
+  @[OBAAttorney.first.PersonnelFirstName] @[OBAAttorney.first.PersonnelLastName]
+
+Conditional respondent attorney address block:
+  @[If(@[RespondentAtty.Any()])]
+    @[RespondentAtty.first.PersonnelFirstName] @[RespondentAtty.first.PersonnelLastName]
+    @[RespondentAttyAddress.first.StreetAddress]
+    @[RespondentAttyAddress.first.City], @[RespondentAttyAddress.first.State] @[RespondentAttyAddress.first.Zip]
+  @[EndIf]
+
+Respondent info block:
+  @[Respondent.first.NameFirstName]
+  @[Respondent.first.NameLastName]
+  @[RespondentAddress.first.StreetAddress]
+  @[RespondentAddress.first.City]
+  @[RespondentAddress.first.State]
+  @[RespondentAddress.first.Zip]
+  @[RespondentPhone.first.PhoneNumber.FormatPhoneNumber()]
+  @[RespondentEmail.first.EmailAddress]
+  @[RespondentBarNum.first.Number]
+
+Complainant info block:
+  @[Complainant.first.NameFirstName]
+  @[Complainant.first.NameLastName]
+  @[ComplainantAddress.first.StreetAddress]
+  @[ComplainantAddress.first.City]
+  @[ComplainantAddress.first.State]
+  @[ComplainantAddress.first.Zip]
+  @[ComplainantPhone.ForEach(CP)]@[CP.PhoneNumber.FormatPhoneNumber()]@[ComplainantPhone.EndForEach]
+  @[ComplainantDOCNum.first.Number]
+
+--------------------------------------------------------------------------------
+27. COMMON TEMPLATE PATTERNS — CRIMINAL / PUBLIC DEFENDER CONTEXT
+--------------------------------------------------------------------------------
+Standard defendant block:
+  @[CreateVar(@Defendant,@CaseInvolvement.GetByQuery("CaseID":@[builtin.CaseID],"Type":"DEF","IsActive":true))]
+  @[Defendant.first.FormatName(F M L)]
+  @[Defendant.first.FormatName(F M L).SetCasing(Upper)]
+  @[CreateVar(@DefName,@Name.GetByID(@[Defendant.first.NameID]))]
+  @[if('@[DefName.Gender]'=='M')]Mr.@[elseif('@[DefName.Gender]'=='F')]Ms.@[else]Mr./Ms.@[endif]
+
+Charges list (comma-separated with Oxford comma):
+  @[CreateVar(@Charges,@CaseCharge.GetByQuery("CaseID":@[builtin.CaseID],"OrderBy":"CountNumber"))]
+  @[Charges.ForEach(c)]
+    @[if(@[c.CaseChargeID]==@[Charges.First().CaseChargeID])]
+      COUNT @[c.CountNumber]: @[c.SystemStatuteOffense] a @[c.Severity.GetLabel(217)], in violation of MCA § @[c.SystemStatuteCode]
+    @[elseif(@[c.CaseChargeID]==@[Charges.Last().CaseChargeID])], and COUNT @[c.CountNumber]: @[c.SystemStatuteOffense]
+    @[else], COUNT @[c.CountNumber]: @[c.SystemStatuteOffense]
+    @[endif]
+  @[Charges.EndForEach]
+
+Charges as Cca (simple comma list):
+  @[Charges.Cca(ch)]@[ch.CountNumber] ~ @[ch.SystemStatuteCode] @[ch.SystemStatuteOffense]@[Charges.EndCca]
+
+Subpoena event assignment block:
+  @[CreateVar(@EA,@EventAssignment.GetByQuery("EventID":@[futEvent.EventID],"Status":"SUB","IsActive":true))]
+  @[EA.ForEach(Assign)]
+    @[Assign.FormatName(F M L).SetCasing(Title)] @[Assign.Type.GetLabel(6)]
+    @[CreateVar(@AssignAddr,@PersonnelAddress.GetByQuery("PersonnelID":@[Assign.PersonnelID],"IsActive":true))]
+    @[if(@[AssignAddr.Any()]==true)]
+      @[AssignAddr.first.StreetAddress]
+      @[AssignAddr.first.City], @[AssignAddr.first.State]
+      @[AssignAddr.first.Zip]
+    @[else]@[endif]
+    @[CreateVar(@AssignPhones,@PersonnelPhone.GetByQuery("PersonnelID":@[Assign.PersonnelID],"IsActive":true))]
+    @[if(@[AssignPhones.Any()]==true)]
+      @[AssignPhones.ForEach(AssignPhone)]@[AssignPhone.PhoneNumber]@[AssignPhones.EndForEach]
+    @[else]@[endif]
+  @[EA.EndForEach]
+
+Defense attorney with fallback (no attorney → defendant directly):
+  @[if(@[DefAtty.Any()] = true)]
+    @[DefAtty.first.FormatName(F M L)]
+    @[DefAttyAddress.first.StreetAddress]
+    @[DefAttyAddress.first.City], @[DefAttyAddress.first.State] @[DefAttyAddress.first.Zip]
+    @[Defendant.first.FormatName(F M L)] c/o counsel
+  @[else]
+    @[Defendant.first.FormatName(F M L)]
+    @[DefAddress.first.StreetAddress]
+    @[DefAddress.first.City], @[DefAddress.first.State] @[DefAddress.first.Zip]
+  @[endif]
+
+Future event conditional per type:
+  @[CreateVar(@FutureEvents,@Event.GetByQuery("CaseID":@[builtin.CaseID],"Status":"P","StartDateGreaterThan":@[builtin.Today]))]
+  @[FutureEvents.ForEach(e)]@[if(@[e.Type]=='JURYW')]@[e.StartDate.FormatDate(preset1)]@[else]@[endif]@[FutureEvents.EndForEach]
+
+Plea agreement fee types:
+  @[Fees.ForEach(f)]
+    @[f.Note]
+    @[if(@[f.Type]=='FC001')] Restitution
+    @[elseif(@[f.Type]=='FC002')] Fine
+    @[elseif(@[f.Type]=='FC003')] Court costs
+    @[elseif(@[f.Type]=='FC004')] Jail Fee
+    @[elseif(@[f.Type]=='FC005')] DTF Fee
+    @[elseif(@[f.Type]=='FC006')] Public Defender User Fee
+    @[elseif(@[f.Type]=='FC007')] Public Defender Attorney Fee
+    @[elseif(@[f.Type]=='FC008')] for @[f.Note]
+    @[else]@[endif]
+  @[Fees.EndForEach]
+
+--------------------------------------------------------------------------------
+28. SYNTAX NOTES AND EDGE CASES
+--------------------------------------------------------------------------------
+Case sensitivity:
+  - Pine token keywords are case-insensitive in practice
+  - @[if()] and @[If()] and @[IF()] are equivalent
+  - @[endif] and @[EndIf] are equivalent
+  - .first and .First() are equivalent
+  - .last and .Last() are equivalent
+  - .FormatName and .formatName are equivalent
+  - .SetCasing and .setcasing are equivalent
+
+Nested tokens:
+  Tokens can be nested — the inner @[...] resolves first, then the outer.
+  Example: @[CreateVar(@DefName,@Name.GetByID(@[Defendant.first.NameID]))]
+
+Boolean comparisons:
+  Both == and = are used for equality; == is preferred for string comparisons.
+  @[if(@[DefAtty.Any()] = true)]     -- "=" form observed
+  @[if(@[DefAtty.Any()] == true)]    -- "==" form also observed
+
+Array type filters (multiple types in one query):
+  "Type": "[DEF,CO]"     -- bracket notation
+  "Type": ['DU001']       -- single-item array notation
+  "Type": ['TC001','TC002','TC003']
+
+CaseID bracket notation (alternate form):
+  "CaseID": @[builtin.CaseID]         -- standard
+  "CaseID": [@[builtin.CaseID]]       -- array-wrapped form (also valid)
+
+Accessing variables without .first (when variable was pulled as .first at creation):
+  @[CreateVar(@Sentence,...)).first]      → @[Sentence.FieldName]  (no .first needed)
+  @[CreateVar(@Defendant,...)]            → @[Defendant.first.FieldName]
+
+Direct field access on a ForEach loop variable:
+  In @[Charges.ForEach(c)]: access fields directly as @[c.SystemStatuteOffense]
+
+ForEach loop variable does NOT use .first:
+  CORRECT:   @[c.SystemStatuteOffense]
+  INCORRECT: @[c.first.SystemStatuteOffense]  (don't use .first on loop variable)
+
+EndForEach closing tags:
+  @[Collection.EndForEach]    -- standard
+  @[EndForEach]               -- standalone form (used with Foreach(X IN Y) syntax)
+
+Prompt variables behave like simple string tokens:
+  @[PromptName]   -- renders the user-entered value at generation time
+
+================================================================================
+END OF PINE SYNTAX GROUND TRUTH
+================================================================================
