@@ -14,3 +14,11 @@ pydantic
 chromadb
 striprtf
 RTFDE
+
+#FastAPI requirements
+fastapi
+uvicorn
+
+# GUI requirements
+streamlit
+pandas

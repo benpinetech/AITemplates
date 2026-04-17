@@ -1,99 +1,53 @@
-def extraction_prompt(legacy_template: str) -> str:
-    return f"""
-You are an expert at extracting variables and functions 
-from legacy legal templates and mapping them to Pine syntax.
+import os
 
-Your task is to extract ALL dynamic variables and functions from the legacy template below.
-Ignore any static text.
+_context_path = os.path.join(os.path.dirname(__file__), "..", "pine_context.md")
+with open(_context_path, "r") as _f:
+    _pine_context = _f.read()
 
-Follow this extraction plan step-by-step:
-1. Scan for all merge field delimiters: %[...] tokens, including nested ones like %[If(%[var])]
-2. Extract field references: any %[FieldName] or %[Object.Property] tokens (e.g., %[JW_Respondent.FullName])
-3. Extract conditional blocks: %[If(...)], %[ElseIf(...)], %[Else], %[EndIf] — capture the full condition expression
-4. Extract loop constructs: %[ForEach(...)], %[EndForEach] — capture the iterator variable and collection
-5. Extract function calls: %[TitleCase(...)], %[UpperCase(...)], %[LowerCase(...)], %[FormatDate(...)], %[Initials(...)], %[AddDay(...)] — capture function name and arguments
-6. Extract special tokens: %[CurrentDate], %[Subdocument(...)], %[MultiSelect], %[Cca(...)]
-7. Deduplicate: list each unique variable/function once, preserving original delimiters
-
-Your output should be a list of extracted legacy variables and functions.
-Ensure you gather every dynamic variable and function.
-Respond only with the list of variables and functions, do not include any other text in your response.
-Preserve the original merge field delimiters.
-
-Here is the legacy template to analyze:
-{legacy_template}
-
-Begin extraction."""
 
 def mapping_prompt(unmapped_legacy_info: list) -> str:
     return f"""
-You are an expert at mapping extracted legacy variables and functions from legal templates to Pine syntax.
+## Awareness — Read Before Searching
+{_pine_context}
 
-Your task is to map ALL extracted legacy variables and functions to the appropriate Pine syntax.
+---
 
-You will be provided with:
-- A list of extracted legacy variables and functions that you will need to map to Pine syntax
-- A tool to search a Pine syntax vector database to find the appropriate Pine syntax for each item
+## Your Task
+You are an expert at converting legacy template variables (%[...] syntax) to Pine syntax (@[...]).
 
-Your output should be a mapping of each extracted legacy variable and function to the appropriate Pine syntax.
-Ensure you map EVERY extracted variable and function. Every single item in the list must appear
-in your output with either a valid Pine mapping or an explicit 'No mapping found' marker.
-Do not skip or silently omit any item — if the database returns no relevant result,
-you must still include the item with 'No mapping found'.
+Map ALL legacy variables below to Pine syntax. Every item must appear in your output with either
+a valid Pine @[...] mapping or 'No mapping found'. Do not skip or omit any item.
 
-IMPORTANT: To speed up the process, make MULTIPLE tool calls in a single response.
-Batch your searches — search for as many variables as possible at once using parallel tool calls
-rather than searching one variable at a time. This is critical for performance.
+**Your workflow:**
+1. Read the Awareness section above to understand mapping pitfalls and quirks.
+2. For EACH legacy variable, search the RAG tool to find the correct Pine syntax.
+3. Use the RAG results to construct the Pine @[...] expression, applying the MANDATORY RULES below.
+4. If the RAG returns nothing relevant, mark the item as 'No mapping found'.
 
-Respond only with the mappings of variables and functions, do not include any other text in your response.
-Preserve the original merge field delimiters.
+Batch your RAG searches — make MULTIPLE tool calls in a single response for performance.
 
-Here is the list of extracted legacy variables and functions:
+Every mapping you produce MUST use @[...] delimiters. Never output %[...] or legacy prefixes.
+
+### MANDATORY RULES — apply these even if RAG results suggest otherwise:
+
+1. **FullName MUST split into two tokens.** Legacy `.FullName` always becomes SEPARATE first + last Pine tokens.
+   NEVER use FormatName(F L) or FormatName(F M L) for FullName — that function is ONLY for signatures/closings.
+   Search the RAG for the entity's individual name fields (they differ by entity category).
+
+2. **Strip TitleCase() and UpperCase() wrappers.** In OBA/bar context, produce the plain field.
+   Do NOT add .SetCasing(Title) or .SetCasing(Upper) unless you find explicit RAG evidence for that exact field.
+
+3. **MrMs → 'No mapping found'.** Always. Never invent a replacement.
+
+4. **OBAAttorney.Title → 'No mapping found'.** Pine typically drops this field.
+
+5. **Prompt variables (X.X pattern) → simple @[Name] token.** Search RAG for the correct Pine name.
+
+6. **Event dates in letter headers → prompt variable.** Do NOT produce data-bound DocumentEvents expressions.
+
+7. **Do NOT invent conditionals** that don't exist in the legacy template.
+
+### Legacy variables to map:
 {unmapped_legacy_info}
 
-Begin mapping."""
-
-
-def generation_prompt(legacy_template: str, mapped_pine_info: list, rtf_validation_error: str = "") -> str:
-    retry_block = ""
-    if rtf_validation_error:
-        retry_block = f"""
-IMPORTANT — YOUR PREVIOUS ATTEMPT FAILED VALIDATION:
-{rtf_validation_error}
-
-Fix these issues in this attempt. Pay careful attention to brace balance and complete output.
-"""
-
-    return f"""
-You are an expert at generating .rtf files with correct syntax for Pine legal templates.
-
-You have already mapped the extracted legacy variables to Pine syntax.
-Now your task is to generate a completed .rtf Pine template.
-
-You will be provided:
-- The original legacy template (use this as your starting point)
-- The mappings from legacy variables to Pine syntax
-
-Instructions:
-- Start from the original legacy template and preserve its EXACT structure, formatting, and static text.
-- Replace each legacy variable and function with the corresponding Pine syntax from the mappings.
-- For any mapping marked 'No mapping found', replace the legacy variable with the literal text
-  UNMAPPED[original_variable] so it is clearly visible and searchable in the output.
-  Never silently drop or omit an unmapped variable.
-- The output must contain the same number of variables as the original template.
-  Every legacy variable must be accounted for — either converted to Pine syntax or marked as UNMAPPED.
-- Ensure all control flow is balanced: every @[If] must have a matching @[EndIf],
-  every @[Foreach] must have a matching @[EndForEach].
-- Output the COMPLETE document from start to finish. Do not truncate or abbreviate any section.
-- Preserve ALL binary/hex-encoded sections (themedata, colorschememapping) byte-for-byte from the original.
-- Your response must be ONLY the .rtf file contents — no markdown fences, no commentary.
-- The output MUST be a valid, renderable .rtf file with balanced braces.
-  The document must start with {{\\rtf1 and end with a matching closing }}.
-{retry_block}
-Here is the legacy template we are converting to Pine syntax:
-{legacy_template}
-
-Here are the mappings from legacy to Pine syntax:
-{chr(10).join(f'{m.legacy} -> {m.pine}' for m in mapped_pine_info)}
-
-Begin the generation of the .rtf file Pine template."""
+Respond only with the mappings. Preserve the original merge field delimiters."""

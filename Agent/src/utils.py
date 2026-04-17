@@ -30,8 +30,8 @@ def build_vector_store(ground_truth_path: str, persist_directory: str = _DEFAULT
 
     splitter = RecursiveCharacterTextSplitter(
         separators=["=" * 80, "-" * 80, "\n\n", "\n"],
-        chunk_size=500,
-        chunk_overlap=50
+        chunk_size=1500,
+        chunk_overlap=100
     )
 
     chunk = splitter.create_documents(

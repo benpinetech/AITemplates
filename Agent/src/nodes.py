@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from typing import Any, Dict, List, Optional
-from langchain_core.messages import SystemMessage, ToolMessage, AIMessage
-from prompts import extraction_prompt, mapping_prompt, generation_prompt
+from langchain_core.messages import SystemMessage, HumanMessage, ToolMessage, AIMessage
+from prompts import mapping_prompt
 from striprtf.striprtf import rtf_to_text
 import re
 from mappingdb import MappingDB
@@ -155,24 +155,42 @@ def make_mapping_finalize(model):
     """
     def mapping_finalize(state: dict):
         """ Parse the tool call results into structured MappingResponse."""
-        tool_messages = [
-            m for m in state["messages"]
-            if isinstance(m, ToolMessage) or (isinstance(m, AIMessage) and m.tool_calls)
-        ]
+        # Collect the RAG tool results and the model's mapping reasoning
+        # into plain text so the structured output model can consume them
+        # (structured output models can't receive raw ToolMessages).
+        parts = []
+        for m in state["messages"]:
+            if isinstance(m, AIMessage) and m.tool_calls:
+                # Capture the model's reasoning text (if any) alongside its tool calls
+                if m.content:
+                    parts.append(f"Assistant reasoning:\n{m.content}")
+                for tc in m.tool_calls:
+                    parts.append(f"Tool query: {tc['args'].get('query', '')}")
+            elif isinstance(m, ToolMessage):
+                parts.append(f"Tool result:\n{m.content}")
+            elif isinstance(m, AIMessage) and m.content:
+                parts.append(f"Assistant:\n{m.content}")
+
+        context_text = "\n\n---\n\n".join(parts) if parts else "No tool results available."
+
         structured_model = model.with_structured_output(MappingResponse)
         response = structured_model.invoke(
             [
                 SystemMessage(
                     content=mapping_prompt(state['unmapped_legacy_info'])
-                )
+                ),
+                HumanMessage(
+                    content=f"Here are the Pine syntax reference results from the database:\n\n{context_text}"
+                ),
             ]
-            + tool_messages
         )
 
         for m in response.mappings:
             m.loaded = False
 
         print("Finalizing mapped Pine syntax")
+        for m in response.mappings:
+            print(f"  {m.legacy} -> {m.pine}")
         all_mappings = list(state.get('mapped_pine_info', [])) + list(response.mappings)
         return {
             "mapped_pine_info": all_mappings,
@@ -221,13 +239,22 @@ def load_mappings(state: dict):
     with MappingDB("../mapping_db") as db:
         mappings = []
         unmapped_legacy_info = []
+        purged = 0
         for legacy_var in state['extracted_legacy_info']:
             pine_var = db.get_mapping(legacy_var)
             if pine_var:
-                mappings.append(mapping(legacy=legacy_var, pine=pine_var, loaded=True))
+                # Re-validate cached entries against current filters
+                if _is_bad_mapping(pine_var) or _is_prompt_variable_mapping(pine_var) or _is_context_dependent(legacy_var, pine_var):
+                    db.delete_mapping(legacy_var)
+                    unmapped_legacy_info.append(legacy_var)
+                    purged += 1
+                else:
+                    mappings.append(mapping(legacy=legacy_var, pine=pine_var, loaded=True))
             else:
                 unmapped_legacy_info.append(legacy_var)
     
+    if purged:
+        print(f"Purged {purged} stale/invalid cached mappings")
     print(f"Loaded {len(mappings)} existing mappings from the database")
     return {"mapped_pine_info": mappings, "unmapped_legacy_info": unmapped_legacy_info}
 
@@ -239,19 +266,34 @@ def save_mappings(state: dict):
     """
     print("Saving new mappings to the database")
     mapping_counter = 0
-    skipped = 0
+    skipped_bad = 0
+    skipped_prompt = 0
+    skipped_ctx = 0
     with MappingDB("../mapping_db") as db:
         for mapped in state.get('mapped_pine_info', []):
             if mapped.loaded:
                 continue
             # Don't save bad mappings
             if _is_bad_mapping(mapped.pine):
-                skipped += 1
+                print(f"  BAD (not cached): {mapped.legacy} -> {mapped.pine}")
+                skipped_bad += 1
+                continue
+            # Don't cache prompt variable mappings (template-specific names)
+            if _is_prompt_variable_mapping(mapped.pine):
+                print(f"  PROMPT (not cached): {mapped.legacy} -> {mapped.pine}")
+                skipped_prompt += 1
+                mapped.loaded = True
+                continue
+            # Don't cache context-dependent mappings (conditionals, event dates, etc.)
+            if _is_context_dependent(mapped.legacy, mapped.pine):
+                print(f"  CTX-DEP (not cached): {mapped.legacy} -> {mapped.pine}")
+                skipped_ctx += 1
+                mapped.loaded = True
                 continue
             mapping_counter += 1
             db.add_mapping(mapped.legacy, mapped.pine)
             mapped.loaded = True
-    print(f"Saved {mapping_counter} new mappings to the database (skipped {skipped} bad entries)")
+    print(f"Saved {mapping_counter} new mappings (skipped: {skipped_bad} bad, {skipped_prompt} prompt, {skipped_ctx} context-dep)")
     return {}
 
 
@@ -270,6 +312,57 @@ def _is_bad_mapping(pine_value: str) -> bool:
     # Reject entries with RTF control codes
     if "\\rtlch" in pine_value or "\\ltrch" in pine_value or "\\fcs" in pine_value:
         return True
+    # Reject mappings that still contain legacy prefixes (JDA-to-JDA)
+    if re.search(r'\bJW_|\bCust_|\bJD_|\bOCA_', pine_value):
+        return True
+    # Reject legacy %[...] syntax in pine output
+    if '%[' in pine_value:
+        return True
+    return False
+
+
+def _is_prompt_variable_mapping(pine_value: str) -> bool:
+    """Returns True if the pine value is a simple prompt variable (template-specific, not cacheable).
+
+    Prompt variables are simple identifiers like @[DateOfLetter] or @[Remarks] —
+    they don't contain dots, method calls, or entity.field patterns.
+    These are template-specific naming conventions and should NOT be cached.
+    """
+    stripped = pine_value.strip()
+    # Must be a single @[...] token
+    if not stripped.startswith("@[") or not stripped.endswith("]"):
+        return False
+    inner = stripped[2:-1].strip()
+    # Simple identifier: no dots, no parens, no spaces, no operators
+    if re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', inner):
+        return True
+    return False
+
+
+def _is_context_dependent(legacy_value: str, pine_value: str) -> bool:
+    """Returns True if this mapping is context-dependent and should NOT be cached.
+
+    Context-dependent mappings produce different Pine output depending on
+    which template they appear in. Caching them causes cross-template bleeding.
+    """
+    lower_legacy = legacy_value.strip().lower()
+    lower_pine = pine_value.strip().lower()
+
+    # Control-flow tokens — these are structural, not variable mappings
+    if lower_pine in ('@[else]', '@[endif]', '@[endforeach]'):
+        return True
+
+    # Conditionals — the correct Pine conditional depends on template context
+    if lower_legacy.startswith('%[if(') or lower_legacy.startswith('%[elseif('):
+        return True
+
+    # FormatDate on event/document dates — template context determines
+    # whether this should be a prompt variable or a data-bound expression
+    if 'formatdate' in lower_legacy and 'event' in lower_legacy:
+        return True
+    if 'documentevents' in lower_legacy:
+        return True
+
     return False
 
 

@@ -66,7 +66,12 @@ Preset shortcuts:
   preset4  →  (occurrence date format — used in charge/subpoena contexts)
   preset5  →  MM/dd/yyyy                (e.g. 03/12/2026)
 
-Custom patterns (passed directly):
+IMPORTANT: Always prefer presets over raw format strings when they match.
+For example, legacy FormatDate(CurrentDate(), MMMM d, yyyy) should become
+@[builtin.today.FormatDate(preset1)], NOT @[builtin.today.FormatDate(MMMM d, yyyy)].
+The preset form is the correct Pine idiom.
+
+Custom patterns (only when no preset matches):
   @[someDate.FormatDate(MMMM d, yyyy)]
   @[someDate.FormatDate(M/dd/yyyy)]
   @[someDate.FormatDate(yyyy)]
@@ -120,16 +125,31 @@ Format examples and output:
   FormatName(F L).SetCasing(Upper)   → "JOHN SMITH"
   FormatName(FILI)                   → "John M.S." (first + initials)
 
+IMPORTANT — FormatName vs. direct field access:
+  FormatName is used ONLY when you need a combined/formatted name in a SINGLE token,
+  such as signatures, salutations, or inline full-name references.
+  When the template shows first name and last name as SEPARATE placeholders,
+  use the direct field accessors instead:
+    CaseInvolvement fields: .NameFirstName, .NameLastName
+    Personnel fields:       .PersonnelFirstName, .PersonnelLastName
+
+  CORRECT (separate placeholders):
+    @[Respondent.first.NameFirstName] @[Respondent.first.NameLastName]
+    @[RespondentAtty.first.PersonnelFirstName] @[RespondentAtty.first.PersonnelLastName]
+  INCORRECT (do NOT use FormatName for separate first/last):
+    @[Respondent.first.FormatName(F L)]   ← wrong when first and last are separate tokens
+
+  CORRECT (single combined name display — signatures, inline):
+    @[OBAAttorney.first.FormatName(FILI)]
+    @[cu.FormatName(FILI)]
+    @[Defendant.first.FormatName(F M L).SetCasing(Upper)]
+
 Real examples:
-  @[Respondent.first.FormatName(F L)]
-  @[Respondent.first.FormatName(F L).SetCasing(Title)]
-  @[Defendant.first.FormatName(F M L)]
-  @[Defendant.first.FormatName(F M L).SetCasing(Upper)]
-  @[OBAAttorney.first.FormatName(FILI)]
-  @[cu.FormatName(FILI)]
+  @[OBAAttorney.first.FormatName(FILI)]   -- signature initials
+  @[cu.FormatName(FILI)]                  -- current user initials
+  @[Defendant.first.FormatName(F M L)]    -- full inline name
+  @[Defendant.first.FormatName(F M L).SetCasing(Upper)]  -- full name uppercase
   @[Prosecutor.first.FormatName(F L).SetCasing(Title)]
-  @[Defense.first.FormatName(F L).SetCasing(Title)]
-  @[Investigator.first.FormatName(FILI)]
 
 --------------------------------------------------------------------------------
 6. SETCASING — TEXT CASING MODIFIER
@@ -644,20 +664,32 @@ Fields on a Personnel record (via GetByID(@[...PersonnelID])):
 --------------------------------------------------------------------------------
 Fields on NameAddress or PersonnelAddress records:
   .StreetAddress
-  .StreetAddress.SetCasing(Title)
   .City
-  .City.SetCasing(Title)
   .State
   .Zip
   .Type                    -- address type (e.g. "M" for mailing)
   .NameAddressID           -- used for comparisons inside ForEach
   .Any()
 
-Address block inline pattern:
+IMPORTANT — SetCasing on address fields:
+  In most OBA/bar templates, address fields do NOT use .SetCasing(Title).
+  Even when the legacy template wraps a field in TitleCase(), the correct
+  Pine syntax is typically the plain field WITHOUT SetCasing.
+  Only add .SetCasing(Title) if the Pine template explicitly requires it
+  (e.g., some criminal/PD templates).
+
+  CORRECT (OBA/bar context — most common):
+    @[RespondentAddress.first.City]
+    @[RespondentAttyAddress.first.City]
+    @[ComplainantAddress.first.City]
+  INCORRECT (do NOT add SetCasing unless explicitly needed):
+    @[RespondentAddress.first.City.SetCasing(Title)]   ← wrong for OBA context
+
+Address block inline pattern (standard):
   @[DefAddr.first.StreetAddress]
   @[DefAddr.first.City], @[DefAddr.first.State] @[DefAddr.first.Zip]
 
-Address block with SetCasing:
+Address block with SetCasing (only in specific PD/criminal templates):
   @[ComplainantAddress.first.StreetAddress.SetCasing(Title)]
   @[ComplainantAddress.first.City.SetCasing(Title)]
   @[ComplainantAddress.first.State]
@@ -845,6 +877,12 @@ Observed SubDocument IDs and their purposes:
 
   @[cu.FormatName(FILI)]               -- current user initials-style name
   @[cu.FormatName(F L).SetCasing(Title)]
+
+IMPORTANT: @[cu.FormatName(FILI)] does NOT need .SetCasing(Lower) appended.
+Even when the legacy template wraps initials in LowerCase(), the Pine
+equivalent is simply @[cu.FormatName(FILI)] without any SetCasing modifier.
+  CORRECT:   @[cu.FormatName(FILI)]
+  INCORRECT: @[cu.FormatName(FILI).SetCasing(Lower)]
   @[curUser.PersonnelFirstName]        -- alternate form
   @[curUser.PersonnelLastName]
   @[CurrentUser.PersonnelFirstName]    -- via CreateVar(@CurrentUser,@SystemUser.GetByID(@[builtin.CurrentUserUserID]))
@@ -872,7 +910,7 @@ Closing block:
   @[OBAAttorney.first.PersonnelFirstName] @[OBAAttorney.first.PersonnelLastName]
 
 Conditional respondent attorney address block:
-  @[If(@[RespondentAtty.Any()])]
+  @[If(@[RespondentAtty.Any()] == true)]
     @[RespondentAtty.first.PersonnelFirstName] @[RespondentAtty.first.PersonnelLastName]
     @[RespondentAttyAddress.first.StreetAddress]
     @[RespondentAttyAddress.first.City], @[RespondentAttyAddress.first.State] @[RespondentAttyAddress.first.Zip]
@@ -1015,6 +1053,66 @@ EndForEach closing tags:
 
 Prompt variables behave like simple string tokens:
   @[PromptName]   -- renders the user-entered value at generation time
+
+--------------------------------------------------------------------------------
+29. JDA / LEGACY VARIABLE MAPPING GUIDE
+--------------------------------------------------------------------------------
+When converting legacy JDA templates (using %[...] syntax) to Pine (@[...]),
+the following prefix and entity mappings apply.
+
+Entity prefix mapping (JDA → Pine):
+  Cust_Respondent / JW_Respondent       →  Respondent       (CaseInvolvement, type RES)
+  Cust_Complainant / JW_Complainant     →  Complainant      (CaseInvolvement, type COM)
+  Cust_RespondentAtty                   →  RespondentAtty   (CaseAssignment)
+  Cust_OBAAttorney                      →  OBAAttorney      (CaseAssignment, type OBA)
+  JW_CurrentUser                        →  cu               (current user shorthand)
+  JW_CaseDetails                        →  (various — see field mappings below)
+
+Field mapping (JDA → Pine):
+  .FullName            →  .NameFirstName + .NameLastName (for CaseInvolvement entities)
+                          .PersonnelFirstName + .PersonnelLastName (for CaseAssignment entities)
+                          NOTE: Do NOT use .FormatName(F L) when the original has separate first/last placeholders
+  .FirstName           →  .NameFirstName (involvement) or .PersonnelFirstName (assignment)
+  .LastName            →  .NameLastName (involvement) or .PersonnelLastName (assignment)
+  .MrMs                →  NOT directly mapped in Pine. Use gender-based conditional:
+                          @[if('@[Name.Gender]'=='M')]Mr.@[elseif('@[Name.Gender]'=='F')]Ms.@[else]Mr./Ms.@[endif]
+                          Or omit if the Pine template does not include a salutation.
+  .Title               →  .PersonnelTitle (for personnel) — but verify the Pine template uses it
+  .Address             →  .StreetAddress
+  .City                →  .City
+  .StateCode           →  .State
+  .Zip                 →  .Zip
+  _RosterAddress       →  Address entity (e.g., RespondentAddress, RespondentAttyAddress)
+  _MailAddress         →  Address entity (e.g., ComplainantAddress)
+
+Address entity mapping:
+  JW_Respondent_RosterAddress           →  RespondentAddress
+  Cust_RespondentAtty_RosterAddress     →  RespondentAttyAddress
+  Cust_Complainant_MailAddress          →  ComplainantAddress
+  JW_Complainant_RosterAddress          →  ComplainantAddress
+
+Case details mapping:
+  JW_CaseDetails.ProsNum                →  @[ProsNum.first.Number]
+  UpperCase(JW_CaseDetails.ProsNum)     →  @[ProsNum.first.Number.SetCasing(Upper)]
+  NOTE: ProsNum is a CaseAgency variable and ALWAYS requires .first.Number
+
+Function mapping (JDA → Pine):
+  FormatDate(CurrentDate(), MMMM d, yyyy)  →  @[builtin.today.FormatDate(preset1)]
+  TitleCase(field)                          →  In OBA context, usually just the plain field
+                                               (e.g., TitleCase(City) → .City, NOT .City.SetCasing(Title))
+  LowerCase(Initials(X.FullName,false))     →  @[cu.FormatName(FILI)]  (no SetCasing needed)
+  Initials(X.FullName,false)                →  FormatName(FILI)
+  UpperCase(field)                          →  .SetCasing(Upper)
+
+Conditional mapping (JDA → Pine):
+  If(Cust_RespondentAtty.FullName.IsEmpty=true)  →  @[If(@[RespondentAtty.Any()] == true)]
+    NOTE: JDA checks "IsEmpty=true" (no attorney), but Pine uses .Any() to check existence.
+    When JDA says "if FullName is empty, show X, else show Y" the logic inverts:
+      JDA:  %[If(Cust_RespondentAtty.FullName.IsEmpty=true)]  (no atty block)
+            %[Else] (has atty block)
+      Pine: @[If(@[RespondentAtty.Any()] == true)]  (has atty block)
+            @[Else] (no atty block)
+    The Else/EndIf structure may need to be swapped when the condition is inverted.
 
 ================================================================================
 END OF PINE SYNTAX GROUND TRUTH
