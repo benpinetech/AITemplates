@@ -7,6 +7,7 @@ import shutil
 import signal
 import subprocess
 import tempfile
+from collections import Counter
 from pathlib import Path
 
 import pandas as pd
@@ -23,7 +24,7 @@ DEFAULT_LEGACY_DIR = str(GROUND_TRUTH_DIR / "evaluation_templates" / "jda_to_pin
 DEFAULT_PINE_DIR = str(GROUND_TRUTH_DIR / "evaluation_templates" / "jda_to_pine" / "pine")
 
 sys.path.insert(0, str(GUI_DIR))
-from rtf_render import init_renderer, render_rtf, highlight_pine, highlight_legacy
+from rtf_render import init_renderer, render_rtf, highlight_legacy, highlight_pine, highlight_ground_truth
 
 st.set_page_config(page_title="Eval Dashboard", layout="wide")
 st.title("Evaluation Dashboard")
@@ -107,7 +108,12 @@ def render_template_panel(rtf_content: str, token_type: str, label: str):
     if method == "dotnet":
         st.components.v1.html(rendered, height=450, scrolling=True)
     else:
-        highlighted = highlight_legacy(rendered) if token_type == "legacy" else highlight_pine(rendered)
+        if token_type == "legacy":
+            highlighted = highlight_legacy(rendered)
+        elif token_type == "ground_truth":
+            highlighted = highlight_ground_truth(rendered)
+        else:
+            highlighted = highlight_pine(rendered)
         st.markdown(
             f'<div style="font-family:monospace;white-space:pre-wrap;font-size:11px;'
             f'max-height:450px;overflow-y:auto;border:1px solid #ddd;padding:8px">'
@@ -373,7 +379,7 @@ if st.session_state.get("single_result"):
     with v2:
         render_template_panel(sr.get("generated_content", ""),    "pine",   "Generated (agent)")
     with v3:
-        render_template_panel(sr.get("ground_truth_content", ""), "pine",   "Ground Truth")
+        render_template_panel(sr.get("ground_truth_content", ""), "ground_truth", "Ground Truth")
 
     st.divider()
 
@@ -436,6 +442,42 @@ st.dataframe(
     use_container_width=True,
     height=200,
 )
+
+st.divider()
+
+# ── aggregate token analytics (across all runs) ───────────────────────────────
+st.subheader("Token Analytics — All Runs")
+
+missing_counter: Counter = Counter()
+extra_counter: Counter = Counter()
+for r in runs:
+    for t in r.get("templates", []):
+        missing_counter.update(t.get("missing", []))
+        extra_counter.update(t.get("extra", []))
+
+an_col1, an_col2 = st.columns(2)
+
+with an_col1:
+    st.markdown("**Top 10 Most Common Missing**")
+    if missing_counter:
+        st.dataframe(
+            pd.DataFrame(missing_counter.most_common(10), columns=["Token", "Count"]),
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.caption("No data yet.")
+
+with an_col2:
+    st.markdown("**Top 10 Most Common Extra**")
+    if extra_counter:
+        st.dataframe(
+            pd.DataFrame(extra_counter.most_common(10), columns=["Token", "Count"]),
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.caption("No data yet.")
 
 st.divider()
 

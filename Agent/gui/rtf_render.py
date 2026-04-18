@@ -59,19 +59,28 @@ def render_rtf(content: str) -> tuple[str, str]:
         return content, "raw"
 
 
-def highlight_pine(text: str) -> str:
-    """Wrap @[...] tokens in a subtle yellow highlight span."""
+def highlight_legacy(text: str) -> str:
+    """Wrap %[...] tokens in an orange highlight (legacy)."""
     return re.sub(
-        r"(@\[[^\]]*\])",
-        r'<mark style="background:rgba(255,220,80,0.5);padding:1px 2px;border-radius:2px">\1</mark>',
+        r"(%\[[^\]]*\])",
+        r'<mark style="background:#ffb347;color:#000;padding:1px 3px;border-radius:2px">\1</mark>',
         text,
     )
 
 
-def highlight_legacy(text: str) -> str:
-    """Wrap %[...] tokens in a subtle orange highlight span."""
+def highlight_pine(text: str) -> str:
+    """Wrap @[...] tokens in a yellow highlight (generated)."""
     return re.sub(
-        r"(%\[[^\]]*\])",
-        r'<mark style="background:rgba(255,160,60,0.5);padding:1px 2px;border-radius:2px">\1</mark>',
+        r"(@\[[^\]]*\])",
+        r'<mark style="background:#f5ff6e;color:#000;padding:1px 3px;border-radius:2px">\1</mark>',
+        text,
+    )
+
+
+def highlight_ground_truth(text: str) -> str:
+    """Wrap @[...] tokens in a green highlight (ground truth)."""
+    return re.sub(
+        r"(@\[[^\]]*\])",
+        r'<mark style="background:#6ee89a;color:#000;padding:1px 3px;border-radius:2px">\1</mark>',
         text,
     )
