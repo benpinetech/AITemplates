@@ -28,6 +28,7 @@ parser.add_argument('-b', '--batch', action='store_true', help="Run the agent in
 parser.add_argument('--legacy-dir', type=str, default=None, help="Path to the folder of legacy RTF templates (required for evaluation mode)")
 parser.add_argument('--pine-dir', type=str, default=None, help="Path to the folder of Pine RTF templates (required for evaluation mode)")
 parser.add_argument('--label', type=str, default="", help="Optional label for this evaluation run")
+parser.add_argument('--templates', nargs='+', default=None, help="Specific template filenames to evaluate (subset of legacy-dir)")
 parser.add_argument('--single-eval', action='store_true', help="Run a one-off eval on a single legacy/pine file pair (not saved to runs)")
 parser.add_argument('--legacy-file', type=str, default=None, help="Single legacy RTF file path (for --single-eval)")
 parser.add_argument('--pine-file', type=str, default=None, help="Single Pine reference RTF file path (for --single-eval)")
@@ -73,7 +74,10 @@ def main():
         pine_dir = Path(args.pine_dir)
         all_results = []
 
+        template_filter = set(args.templates) if args.templates else None
         for legacy_file in sorted(legacy_dir.glob("*.rtf")):
+            if template_filter and legacy_file.name not in template_filter:
+                continue
             pine_file = pine_dir / legacy_file.name
             if not pine_file.exists():
                 print(f"Skipping {legacy_file.name} — no matching Pine template")

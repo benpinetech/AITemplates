@@ -62,6 +62,8 @@ mapping_db/
 
 evaluation_output/
 
+eval_runs/
+
 template_output/
 
 .~lock.*#

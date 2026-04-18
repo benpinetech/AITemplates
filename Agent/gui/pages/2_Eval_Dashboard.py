@@ -1,6 +1,10 @@
 import sys
+import html
 import json
+import os
+import re
 import shutil
+import signal
 import subprocess
 import tempfile
 from pathlib import Path
@@ -24,6 +28,17 @@ from rtf_render import init_renderer, render_rtf, highlight_pine, highlight_lega
 st.set_page_config(page_title="Eval Dashboard", layout="wide")
 st.title("Evaluation Dashboard")
 
+# ── handle pending stop request ───────────────────────────────────────────────
+if st.session_state.get("stop_requested") and st.session_state.get("eval_proc_pid"):
+    try:
+        os.kill(st.session_state.eval_proc_pid, signal.SIGTERM)
+    except (ProcessLookupError, OSError):
+        pass
+    st.session_state.pop("stop_requested", None)
+    st.session_state.pop("eval_proc_pid", None)
+    st.session_state.eval_running = False
+    st.warning("Run stopped early — partial results were not saved.")
+
 # ── init renderer once ────────────────────────────────────────────────────────
 if "renderer_checked" not in st.session_state:
     init_renderer("http://localhost:5000")
@@ -45,6 +60,28 @@ def load_runs() -> list[dict]:
 
 def f1(recall: float, precision: float) -> float:
     return (2 * recall * precision / (recall + precision)) if (recall + precision) else 0.0
+
+
+def fmt_duration(seconds: float) -> str:
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    m, s = divmod(int(seconds), 60)
+    return f"{m}m {s}s"
+
+
+def token_box(label: str, tokens: list[str], color: str = "#e6edf3"):
+    """Render a labelled, fixed-height scrollable box of token strings."""
+    rows = "".join(
+        f'<div style="padding:2px 0;color:{color};font-size:11px;font-family:monospace">'
+        f'{html.escape(t)}</div>'
+        for t in tokens
+    ) or '<div style="color:#666;font-size:11px;font-family:monospace;padding:2px 0">—</div>'
+    st.markdown(f"**{label}**")
+    st.html(
+        f'<div style="height:180px;overflow-y:scroll;border:1px solid #30363d;'
+        f'border-radius:4px;padding:6px 8px;background:#0d1117">'
+        f'{rows}</div>'
+    )
 
 
 def pct(v: float) -> str:
@@ -90,15 +127,59 @@ with st.sidebar:
         legacy_dir_input = st.text_input("Legacy dir", value=DEFAULT_LEGACY_DIR)
         pine_dir_input   = st.text_input("Pine dir",   value=DEFAULT_PINE_DIR)
         run_label        = st.text_input("Label (optional)", placeholder="e.g. gpt-5-mini baseline")
-        run_btn          = st.button("Run Batch", type="primary", use_container_width=True)
+
+        # ── template picker ───────────────────────────────────────────────────
+        _lp = Path(legacy_dir_input)
+        _pp = Path(pine_dir_input)
+        matched_pairs = sorted(
+            f.name for f in _lp.glob("*.rtf") if (_pp / f.name).exists()
+        ) if _lp.exists() and _pp.exists() else []
+
+        if matched_pairs:
+            st.caption(f"{len(matched_pairs)} template pairs found")
+            c1, c2 = st.columns(2)
+            if c1.button("All", use_container_width=True):
+                for n in matched_pairs:
+                    st.session_state[f"tmpl_{n}"] = True
+            if c2.button("None", use_container_width=True):
+                for n in matched_pairs:
+                    st.session_state[f"tmpl_{n}"] = False
+
+            with st.container(height=280):
+                for name in matched_pairs:
+                    st.checkbox(
+                        name.removesuffix(".rtf"),
+                        value=st.session_state.get(f"tmpl_{name}", True),
+                        key=f"tmpl_{name}",
+                    )
+
+            selected = [n for n in matched_pairs if st.session_state.get(f"tmpl_{n}", True)]
+        else:
+            selected = []
+            if legacy_dir_input and pine_dir_input:
+                st.caption("No matched pairs found.")
+
+        run_btn = st.button(
+            "Run Batch",
+            type="primary",
+            use_container_width=True,
+            disabled=not selected or bool(st.session_state.get("eval_running")),
+        )
 
         if run_btn:
-            st.session_state.eval_running    = True
-            st.session_state.eval_mode       = "batch"
-            st.session_state.eval_legacy_dir = legacy_dir_input
-            st.session_state.eval_pine_dir   = pine_dir_input
-            st.session_state.eval_label      = run_label
-            st.session_state.single_result   = None
+            st.session_state.eval_running             = True
+            st.session_state.eval_mode                = "batch"
+            st.session_state.eval_legacy_dir          = legacy_dir_input
+            st.session_state.eval_pine_dir            = pine_dir_input
+            st.session_state.eval_label               = run_label
+            st.session_state.eval_total_templates     = len(selected)
+            st.session_state.eval_selected_templates  = selected
+            st.session_state.single_result            = None
+
+        if st.session_state.get("eval_running") and st.session_state.get("eval_mode") == "batch":
+            if st.button("Stop Run", type="secondary", use_container_width=True):
+                st.session_state.stop_requested = True
+                st.rerun()
 
     else:
         st.caption("One-off run — not saved to history.")
@@ -172,8 +253,8 @@ if st.session_state.get("eval_running"):
         st.rerun()
 
     else:
-        st.subheader("Running batch evaluation…")
-        log_area = st.empty()
+        total_templates = st.session_state.get("eval_total_templates", "?")
+        combined_area = st.empty()
 
         cmd = [
             sys.executable, "-u",
@@ -184,6 +265,8 @@ if st.session_state.get("eval_running"):
         ]
         if st.session_state.get("eval_label"):
             cmd += ["--label", st.session_state.eval_label]
+        if st.session_state.get("eval_selected_templates"):
+            cmd += ["--templates"] + st.session_state.eval_selected_templates
 
         proc = subprocess.Popen(
             cmd,
@@ -193,14 +276,69 @@ if st.session_state.get("eval_running"):
             bufsize=1,
             cwd=str(AGENT_DIR),
         )
+        st.session_state.eval_proc_pid = proc.pid
 
-        log_lines: list[str] = []
+        def _render(lines: list[str], done: int, total, current: str, status: str):
+            escaped = html.escape("\n".join(lines))
+            status_escaped = html.escape(status)
+            progress_escaped = html.escape(current)
+            combined_area.html(
+                f'<div style="border:1px solid #30363d;border-radius:6px;overflow:hidden;font-family:monospace">'
+                f'<div style="height:360px;overflow-y:scroll;display:flex;flex-direction:column-reverse;'
+                f'background:#0d1117">'
+                f'<div style="font-size:11px;padding:10px;color:#e6edf3;white-space:pre-wrap;word-wrap:break-word">'
+                f'{escaped}</div>'
+                f'</div>'
+                f'<div style="border-top:1px solid #30363d;padding:7px 12px;background:#0d1117;color:#e6edf3;font-size:13px">'
+                f'<span style="color:#58a6ff;font-weight:bold">{done} / {total}</span>'
+                f'{"&nbsp;&nbsp;" + progress_escaped if progress_escaped else ""}'
+                f'</div>'
+                f'<div style="border-top:1px solid #30363d;padding:7px 12px;background:#0d1117;'
+                f'color:#3fb950;font-size:14px">&#9654; {status_escaped}</div>'
+                f'</div>'
+            )
+
+        def _is_noise(line: str) -> bool:
+            s = line.strip()
+            return s.startswith(("from ", "import ")) and not s.startswith(("from __", "import __"))
+
+        eval_lines: list[str] = []
+        status_msg = ""
+        current_template = ""
+        completed = 0
+        in_report = False
+
         for line in proc.stdout:
-            log_lines.append(line.rstrip())
-            log_area.code("\n".join(log_lines[-50:]), language=None)
+            clean = line.rstrip()
+            if _is_noise(clean):
+                continue
+
+            stripped = clean.strip()
+            is_separator = bool(stripped) and all(c in "=#" for c in stripped)
+
+            if is_separator:
+                in_report = True
+                eval_lines.append(clean)
+            elif in_report:
+                if not stripped:
+                    eval_lines.append(clean)
+                elif clean.startswith(" "):
+                    eval_lines.append(clean)
+                    if "  Recall:" in clean:
+                        completed += 1
+                else:
+                    in_report = False
+                    status_msg = clean
+            elif clean:
+                status_msg = clean
+                if clean.startswith("Evaluating "):
+                    current_template = clean[len("Evaluating "):]
+
+            _render(eval_lines, completed, total_templates, current_template, status_msg)
 
         proc.wait()
         st.session_state.eval_running = False
+        st.session_state.pop("eval_proc_pid", None)
 
         if proc.returncode == 0:
             st.success("Batch evaluation complete. Scroll down to see results.")
@@ -222,17 +360,11 @@ if st.session_state.get("single_result"):
 
     tok1, tok2, tok3 = st.columns(3)
     with tok1:
-        st.markdown(f"**Correct ({sr['correct_count']})**")
-        for tok in sr.get("correct", []):
-            st.markdown(f"<small><code>{tok}</code></small>", unsafe_allow_html=True)
+        token_box(f"Correct ({sr['correct_count']})", sr.get("correct", []))
     with tok2:
-        st.markdown(f"**Missing ({sr['missing_count']})**")
-        for tok in sr.get("missing", []):
-            st.markdown(f'<small><code style="color:red">{tok}</code></small>', unsafe_allow_html=True)
+        token_box(f"Missing ({sr['missing_count']})", sr.get("missing", []), color="#f85149")
     with tok3:
-        st.markdown(f"**Extra ({sr['extra_count']})**")
-        for tok in sr.get("extra", []):
-            st.markdown(f'<small><code style="color:orange">{tok}</code></small>', unsafe_allow_html=True)
+        token_box(f"Extra ({sr['extra_count']})", sr.get("extra", []), color="#e3b341")
 
     st.markdown("**Template Comparison**")
     v1, v2, v3 = st.columns(3)
@@ -282,7 +414,7 @@ table_df = pd.DataFrame([
         "Micro Recall": r["summary"]["micro_recall"],
         "Micro Precision": r["summary"]["micro_precision"],
         "Macro F1": r["summary"]["macro_f1"],
-        "Duration (s)": round(r["summary"]["total_duration"], 1),
+        "Duration": fmt_duration(r["summary"]["total_duration"]),
     }
     for r in runs
 ])
@@ -322,7 +454,7 @@ m2.metric("Micro Recall",    pct(s["micro_recall"]))
 m3.metric("Micro Precision", pct(s["micro_precision"]))
 m4.metric("Macro F1",        pct(s["macro_f1"]))
 m5.metric("Templates",       s["total_templates"])
-m6.metric("Duration",        f"{s['total_duration']:.1f}s")
+m6.metric("Duration",        fmt_duration(s["total_duration"]))
 
 templates = selected_run.get("templates", [])
 tmpl_df = pd.DataFrame([
@@ -336,7 +468,7 @@ tmpl_df = pd.DataFrame([
         "Extra": t["extra_count"],
         "Expected": t["total_expected"],
         "Agent": t["total_agent"],
-        "Duration (s)": round(t["duration"], 1),
+        "Duration": fmt_duration(t["duration"]),
     }
     for t in templates
 ])
@@ -345,7 +477,7 @@ def _style_f1(val):
     return color_f1(val)
 
 st.dataframe(
-    tmpl_df.style.applymap(_style_f1, subset=["F1"]).format({
+    tmpl_df.style.map(_style_f1, subset=["F1"]).format({
         "Recall": "{:.1%}", "Precision": "{:.1%}", "F1": "{:.1%}",
     }),
     use_container_width=True,
@@ -376,25 +508,11 @@ c4.metric("Duration",  f"{selected_tmpl['duration']:.1f}s")
 # Token sets
 tok_col1, tok_col2, tok_col3 = st.columns(3)
 with tok_col1:
-    st.markdown(f"**Correct ({selected_tmpl['correct_count']})**")
-    for tok in selected_tmpl.get("correct", []):
-        st.markdown(f"<small><code>{tok}</code></small>", unsafe_allow_html=True)
-
+    token_box(f"Correct ({selected_tmpl['correct_count']})", selected_tmpl.get("correct", []))
 with tok_col2:
-    st.markdown(f"**Missing ({selected_tmpl['missing_count']})**")
-    for tok in selected_tmpl.get("missing", []):
-        st.markdown(
-            f'<small><code style="color:red">{tok}</code></small>',
-            unsafe_allow_html=True,
-        )
-
+    token_box(f"Missing ({selected_tmpl['missing_count']})", selected_tmpl.get("missing", []), color="#f85149")
 with tok_col3:
-    st.markdown(f"**Extra ({selected_tmpl['extra_count']})**")
-    for tok in selected_tmpl.get("extra", []):
-        st.markdown(
-            f'<small><code style="color:orange">{tok}</code></small>',
-            unsafe_allow_html=True,
-        )
+    token_box(f"Extra ({selected_tmpl['extra_count']})", selected_tmpl.get("extra", []), color="#e3b341")
 
 st.divider()
 
