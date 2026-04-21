@@ -552,16 +552,21 @@ From CaseInvolvement (case participants):
   @[CreateVar(@PIP,@CaseInvolvement.GetByQuery("CaseID":@[builtin.CaseID],"Type":"CIT07","IsActive":true))]
 
 From CaseAssignment (legal personnel on case):
-  @[CreateVar(@OBAAttorney,@CaseAssignment.GetByQuery("CaseID":@[builtin.CaseID],"Type":"OBA","IsActive":true))]
-  @[CreateVar(@Prosecutor,@CaseAssignment.GetByQuery("CaseID":@[builtin.CaseID],"Type":"PROSATTY","IsActive":true))]
-  @[CreateVar(@DefAtty,@CaseAssignment.GetByQuery("CaseID":@[builtin.CaseID],"Type":"DEF ATTY","IsActive":true))]
+  @[CreateVar(@OBAAttorney,@CaseAssignment.GetByQuery("CaseID":@[builtin.CaseID],"Type":"CIT14","IsActive":true))]
+  @[CreateVar(@Prosecutor,@CaseAssignment.GetByQuery("CaseID":@[builtin.CaseID],"Type":"PROS","IsActive":true))]
+  @[CreateVar(@DefAtty,@CaseAssignment.GetByQuery("CaseID":@[builtin.CaseID],"Type":"DA","IsActive":true))]
   @[CreateVar(@Judge,@CaseAssignment.GetByQuery("CaseID":@[builtin.CaseID],"Type":"JDG","IsActive":true))]
   @[CreateVar(@PubDef,@CaseAssignment.GetByQuery("CaseID":@[builtin.CaseID],"Type":"OPD","IsActive":true))]
+  @[CreateVar(@RespondentAtty,@CaseAssignment.GetByQuery("CaseID":@[builtin.CaseID],"Type":"CIT12","IsActive":true))]
+  @[CreateVar(@Investigator,@CaseAssignment.GetByQuery("CaseID":@[builtin.CaseID],"Type":"CIT13","IsActive":true))]
   @[CreateVar(@CityAtty,@CaseAssignment.GetByQuery("CaseID":[@[builtin.CaseID]],"Type":"[P,A]","IsActive":true))]
   @[CreateVar(@LeadProsAtty,@CaseAssignment.GetByQuery("CaseID":@[builtin.CaseID],"Type":"CIT15","IsActive":true))]
   @[CreateVar(@RetCounsel,@CaseAssignment.GetByQuery("CaseID":@[builtin.CaseID],"Type":"CIT19","IsActive":true))]
   @[CreateVar(@AppCounsel,@CaseAssignment.GetByQuery("CaseID":@[builtin.CaseID],"Type":"CIT20","IsActive":true))]
   @[CreateVar(@Officer,@CaseAssignment.GetByQuery("CaseID":[@[builtin.CaseID]],"Type":"[O]","IsActive":true))]
+
+NOTE on type codes: OBAAttorney uses "CIT14", RespondentAtty uses "CIT12", Investigator uses "CIT13",
+DefAtty uses "DA", Prosecutor uses "PROS". These are observed in human-verified OBA templates.
 
 Multiple types (array notation):
   @[CreateVar(@CityAtty,@CaseAssignment.GetByQuery("CaseID":[@[builtin.CaseID]],"Type":"[P,A]","IsActive":true))]
@@ -569,7 +574,7 @@ Multiple types (array notation):
   @[CreateVar(@DefAttorney,@CaseAssignment.GetByQuery("CaseID":@[builtin.CaseID],"Type":"DA","IsActive":true))]
 
 From CaseAgency (case number sources):
-  @[CreateVar(@ProsNum,@CaseAgency.GetByQuery("CaseID":@[builtin.CaseID],"Type":"PROS","IsPrimary":true))]
+  @[CreateVar(@ProsNum, @CaseAgency.GetByQuery("CaseID":@[builtin.CaseID],"NumberType":"PRO"))]
   @[CreateVar(@CaseNumber,@CaseAgency.GetByQuery("CaseID":@[builtin.CaseID],"IsPrimary":true))]
   @[CreateVar(@CourtNum,@CaseAgency.GetByQuery("CaseID":@[builtin.CaseID],"NumberType":"CRT","IsPrimary":true))]
   @[CreateVar(@LeadNumber,@CaseAgency.GetByQuery("CaseID":@[builtin.CaseID],"IsLead":true).first)]
@@ -580,16 +585,21 @@ From CaseAgency (case number sources):
 
 From NameAddress (mailing/physical address by NameID):
   @[CreateVar(@DefAddr,@NameAddress.GetByQuery("NameID":@[Defendant.first.NameID],"IsActive":true))]
-  @[CreateVar(@ComplainantAddress,@NameAddress.GetByQuery("NameID":@[Complainant.first.NameID]))]
+  @[CreateVar(@DefAddress,@NameAddress.GetByQuery("NameID":@[Defendant.first.NameID],"IsActive":true))]
+  @[CreateVar(@RespondentAddress, @NameAddress.GetByQuery("NameID":@[Respondent.first.NameID]))]
+  @[CreateVar(@ComplainantAddress, @NameAddress.GetByQuery("NameID":@[Complainant.first.NameID]))]
   @[CreateVar(@WitAddress,@NameAddress.GetByQuery("NameID":@[Wit.first.NameID]))]
   @[CreateVar(@ChildAddress,@NameAddress.GetByQuery("NameID":@[Child.first.NameID],"IsActive":true))]
   @[CreateVar(@EIAddr,@NameAddress.GetByQuery("NameID":@[Involve.NameID],"IsActive":true))]
   @[CreateVar(@EIAddrOTL,@NameAddress.GetByQuery("NameID":@[Involve.NameID],"Type":"M","IsActive":true))]
+  @[CreateVar(@WitnessAddress,@NameAddress.GetByQuery("NameID":@[PromptWitness.NameID]))]
 
 From PersonnelAddress (address by PersonnelID):
   @[CreateVar(@DefAttyAddr,@PersonnelAddress.GetByQuery("PersonnelID":@[DefAtty.first.PersonnelID],"IsActive":true))]
   @[CreateVar(@AssignAddr,@PersonnelAddress.GetByQuery("PersonnelID":@[Assign.PersonnelID],"IsActive":true))]
   @[CreateVar(@RetCounAddress,@PersonnelAddress.GetByQuery("PersonnelID":@[RetCounsel.PersonnelID]))]
+  @[CreateVar(@RespondentAttyAddress, @PersonnelAddress.GetByQuery("PersonnelID":@[RespondentAtty.first.PersonnelID]))]
+  @[CreateVar(@AssignAddress,@PersonnelAddress.GetByQuery("PersonnelID":@[Assignment.PersonnelID],"IsActive":true))]
 
 From NamePhone:
   @[CreateVar(@WitPhone,@NamePhone.GetByQuery("NameID":@[Wit.first.NameID]))]
@@ -609,9 +619,19 @@ From PersonnelEmail:
 
 From Name (demographics/biographic record by NameID):
   @[CreateVar(@DefName,@Name.GetByID(@[Defendant.first.NameID]))]
+  @[CreateVar(@DefGender,@Name.GetByID(@[Defendant.first.NameID]))]
   @[CreateVar(@ChildName,@Name.GetByID(@[Child.first.NameID]))]
+  @[CreateVar(@ChildGender,@Name.GetByID(@[Child.first.NameID]))]
   @[CreateVar(@VicName,@Name.GetByID(@[Vic.NameID]))]
   @[CreateVar(@PIPName,@Name.GetByID(@[PIP.first.NameID]))]
+  @[CreateVar(@RespondentInfo, @Name.GetByID(@[Respondent.first.NameID]))]
+  @[CreateVar(@InvName,@Name.GetByID(@[Involvement.NameID]))]
+  @[CreateVar(@AssignName,@Name.GetByID(@[Involvement.NameID]))]
+
+NOTE: RespondentInfo is the standard pattern in OBA templates to get a Name record for
+gender/prefix checks on the Respondent. ComplainantInfo is a similar pattern but often
+pre-bound in OBA templates (access without CreateVar).
+  @[CreateVar(@ComplainantInfo, @Name.GetByID(@[Complainant.first.NameID]))]
 
 From Personnel (personnel record by PersonnelID):
   @[CreateVar(@DefAttyName,@Personnel.GetByID(@[DefAttorney.first.PersonnelID]))]
@@ -646,8 +666,19 @@ From EventInvolvement:
 
 From CaseCharge:
   @[CreateVar(@Charges,@CaseCharge.GetByQuery("CaseID":@[builtin.CaseID]))]
-  @[CreateVar(@Charges,@CaseCharge.GetByQuery("CaseID":@[builtin.CaseID],"OrderBy":"CountNumber"))]
+  @[CreateVar(@Charges, @CaseCharge.GetByQuery("CaseID":@[builtin.CaseID],"OrderBy":"CountNumber"))]
   @[CreateVar(@PrimCharge,@CaseCharge.GetByQuery("CaseID":@[builtin.CaseID],"IsPrimary":true).first)]
+  @[CreateVar(@ORPC, @CaseCharge.GetByQuery("CaseID":@[builtin.CaseID]))]
+  @[CreateVar(@RGDP, @CaseCharge.GetByQuery("CaseID":@[builtin.CaseID]))]
+  @[CreateVar(@ORPCFilter, @SystemStatute.GetByID(@[x.SystemStatuteID]))]
+  @[CreateVar(@RGDPFilter, @SystemStatute.GetByID(@[x.SystemStatuteID]))]
+
+NOTE on ORPC/RGDP: These are OBA disciplinary charge collections (Oklahoma Rules of Professional
+Conduct / Rules Governing Disciplinary Proceedings). Used with ForEach + SystemStatute lookup:
+  @[ORPC.ForEach(x)]
+    @[CreateVar(@ORPCFilter, @SystemStatute.GetByID(@[x.SystemStatuteID]))]
+    @[If('@[ORPCFilter.Group]' == 'ORPC')]@[x.SystemStatuteOffense]@[EndIf]
+  @[ORPC.EndForEach]
 
 From CasePleaAgreement:
   @[CreateVar(@PleaOffer,@CasePleaAgreement.GetByQuery("CaseID":@[builtin.CaseID],"CaseChargeID":@[charge.CaseChargeID],"Type":"[O]"))]
@@ -1102,14 +1133,23 @@ equivalent is simply @[cu.FormatName(FILI)] without any SetCasing modifier.
 These are real patterns seen in OBA (Oklahoma Bar Association) or similar 
 bar association disciplinary templates:
 
-Standard header block (typically appears in every letter):
+Standard header block — most OBA letters start with SubDocument(5) then SubDocument(3):
+  @[SubDocument(5)]
+  @[SubDocument(3)]
   @[builtin.today.FormatDate(preset1)]
-  @[Respondent.first.NameFirstName] @[Respondent.first.NameLastName]
-  @[RespondentAddress.first.StreetAddress]
+
+Address block using FormatName(F L).SetCasing(Title) (standard OBA form):
+  @[Respondent.first.FormatName(F L).SetCasing(Title)]
+  @[RespondentAddress.first.StreetAddress]   OR  @[RespondentAddress.first.StreetAddress.SetCasing(Title)]
   @[RespondentAddress.first.City], @[RespondentAddress.first.State] @[RespondentAddress.first.Zip]
 
-  Re: @[Complainant.first.NameFirstName] @[Complainant.first.NameLastName]
+  Re: @[Complainant.first.FormatName(F L).SetCasing(Title)]
   Prosecution No.: @[ProsNum.first.Number]
+
+NOTE: Most OBA templates use FormatName(F L).SetCasing(Title) for the recipient name,
+NOT the separate @[NameFirstName] @[NameLastName] form. The SetCasing(Title) is
+almost always applied. The old NameFirstName/NameLastName form also appears in some
+simpler OBA templates without SetCasing.
 
 Closing block:
   Sincerely,
@@ -1384,25 +1424,29 @@ the following prefix and entity mappings apply.
 Entity prefix mapping (JDA → Pine):
   Cust_Respondent / JW_Respondent       →  Respondent       (CaseInvolvement, type RES)
   Cust_Complainant / JW_Complainant     →  Complainant      (CaseInvolvement, type COM)
-  Cust_RespondentAtty                   →  RespondentAtty   (CaseAssignment)
-  Cust_OBAAttorney                      →  OBAAttorney      (CaseAssignment, type OBA)
+  Cust_RespondentAtty                   →  RespondentAtty   (CaseAssignment, type CIT12)
+  Cust_OBAAttorney                      →  OBAAttorney      (CaseAssignment, type CIT14)
   JW_CurrentUser                        →  cu               (current user shorthand)
   JW_CaseDetails                        →  (various — see field mappings below)
-  Cust_Defense / JW_Defense             →  Defense          (CaseAssignment — respondent's attorney)
-  Cust_Prosecutor / JW_Prosecutor       →  Prosecutor       (CaseAssignment, type PROSATTY)
-  Cust_Investigator                     →  Investigator     (CaseAssignment — investigator)
+  Cust_Defense / JW_Defense             →  Defense          (CaseAssignment — respondent's attorney in OBA)
+  Cust_Prosecutor / JW_Prosecutor       →  Prosecutor       (CaseAssignment, type PROS)
+  Cust_Investigator                     →  Investigator     (CaseAssignment, type CIT13)
   JW_FilingComplainant                  →  FilingComplainant (CaseInvolvement — filing complainant)
   Cust_IntakeProsecutor                 →  IntakeProsecutor (CaseAssignment — intake prosecutor)
 
 Field mapping (JDA → Pine):
-  .FullName            →  .NameFirstName + .NameLastName (for CaseInvolvement entities)
-                          .PersonnelFirstName + .PersonnelLastName (for CaseAssignment entities)
-                          NOTE: Do NOT use .FormatName(F L) when the original has separate first/last placeholders
+  .FullName            →  .FormatName(F L).SetCasing(Title) for a single combined name token (OBA context)
+                          OR .NameFirstName + .NameLastName when the template shows them as SEPARATE placeholders
+                          NOTE: In OBA templates, most combined name references use FormatName(F L).SetCasing(Title)
+  .LastName (standalone) → .FormatName(L).SetCasing(Title) when used as salutation target (OBA)
   .FirstName           →  .NameFirstName (involvement) or .PersonnelFirstName (assignment)
   .LastName            →  .NameLastName (involvement) or .PersonnelLastName (assignment)
-  .MrMs                →  NOT directly mapped in Pine. Use gender-based conditional:
-                          @[if('@[Name.Gender]'=='M')]Mr.@[elseif('@[Name.Gender]'=='F')]Ms.@[else]Mr./Ms.@[endif]
-                          Or omit if the Pine template does not include a salutation.
+                          OR .FormatName(L).SetCasing(Title) in OBA salutation context
+  .MrMs                →  Map to the NameFirstName of the SAME entity (for involvement entities)
+                          or PersonnelFirstName (for assignment entities).
+                          Example: %[JW_Respondent.MrMs] → @[Respondent.first.NameFirstName]
+                          Example: %[Cust_Complainant.MrMs] → @[Complainant.first.NameFirstName]
+                          In Pine, the salutation uses "Dear FirstName LastName:" instead of "Dear Mr./Ms. LastName:"
   .Title               →  .PersonnelTitle (for personnel) — but verify the Pine template uses it
   .Address             →  .StreetAddress
   .City                →  .City
@@ -1468,6 +1512,309 @@ OBAAttorney.Title mapping:
   attorney's name and initials instead. Only produce @[OBAAttorney.first.PersonnelTitle]
   if you are confident the template context requires it. When in doubt, use
   'No mapping found' for %[Cust_OBAAttorney.Title].
+
+--------------------------------------------------------------------------------
+31. OBA CONTEXT — DEFENSE / RESPONDENT ATTORNEY ENTITY
+--------------------------------------------------------------------------------
+In OBA (bar disciplinary) templates, the respondent's attorney is accessed via
+the "Defense" pre-bound collection (distinct from "DefAtty" in criminal context).
+
+Defense entity (CaseAssignment — respondent's attorney in OBA proceedings):
+  @[If(@[Defense.Any()] == true)]
+  @[Defense.first.FormatName(F L).SetCasing(Title)]   -- first + last, title case
+  @[Defense.first.FormatName(L).SetCasing(Title)]     -- last name only, title case
+  @[Defense.first.FormatName(F L).SetCasing(Upper)]   -- first + last, all caps
+
+DefenseAddress entity (address for Defense attorney):
+  @[DefenseAddress.first.StreetAddress.SetCasing(Title)]
+  @[DefenseAddress.first.City.SetCasing(Title)]
+  @[DefenseAddress.first.State]
+  @[DefenseAddress.first.Zip]
+  @[DefenseAddress.ForEach(y)]..@[DefenseAddress.EndForEach]
+
+DefenseInfo entity (Name record for Defense attorney — for prefix/gender):
+  @[DefenseInfo.Prefix]   -- salutation prefix (raw value, no GetLabel needed)
+
+DefenseBarNum entity (bar number for Defense attorney):
+  @[DefenseBarNum.first.Number]
+
+DefenseWorkPhone / DefenseFaxPhone (phone numbers for Defense attorney):
+  @[DefenseWorkPhone.first.PhoneNumber.FormatPhoneNumber()]
+  @[DefenseFaxPhone.first.PhoneNumber.FormatPhoneNumber()]
+
+Standard "Defense attorney or Respondent directly" address block (OBA):
+  @[If(@[Defense.Any()] == true)]
+    @[Defense.first.FormatName(F L).SetCasing(Title)]
+    @[If('@[DefenseAddress.first.Type]' == 'RBA')]
+    @[Else]
+    @[EndIf]
+    @[DefenseAddress.first.StreetAddress.SetCasing(Title)]
+    @[DefenseAddress.first.City.SetCasing(Title)]
+    @[DefenseAddress.first.State]
+    @[DefenseAddress.first.Zip]
+  @[Else]
+    @[RespondentAddress.ForEach(x)]
+      @[Respondent.first.FormatName(F L).SetCasing(Title)]
+      @[If('@[RespondentAddress.first.Type]' == 'RBA')]
+      @[Else]
+      @[EndIf]
+      @[RespondentAddress.first.StreetAddress.SetCasing(Title)]
+      @[RespondentAddress.first.City.SetCasing(Title)]
+      @[RespondentAddress.first.State]
+      @[RespondentAddress.first.Zip]
+    @[RespondentAddress.EndForEach]
+  @[EndIf]
+
+Salutation block using Defense vs Respondent (OBA):
+  @[If(@[Defense.Any()] == true)]
+    @[DefenseInfo.Prefix] @[Defense.first.FormatName(L).SetCasing(Title)]:
+  @[Else]
+    @[If('@[RespondentInfo.Gender]' == 'M')]Mr.@[ElseIf('@[RespondentInfo.Gender]' == 'F')]Ms.@[Else]Mr./Ms.@[EndIf]
+    @[Respondent.first.FormatName(L).SetCasing(Title)]
+  @[EndIf]
+
+NOTE on address type 'RBA': In OBA templates, 'RBA' is a specific address type code
+(Roster Bar Address). When `DefenseAddress.first.Type == 'RBA'`, the address block
+is conditionally shown or hidden.
+
+--------------------------------------------------------------------------------
+32. OBA CONTEXT — RESPONDENTINFO AND COMPLAINANTINFO GENDER PATTERNS
+--------------------------------------------------------------------------------
+OBA templates use Name records loaded from Respondent/Complainant NameID to check gender.
+
+CreateVar (required before using gender check):
+  @[CreateVar(@RespondentInfo, @Name.GetByID(@[Respondent.first.NameID]))]
+  @[CreateVar(@ComplainantInfo, @Name.GetByID(@[Complainant.first.NameID]))]
+
+Gender-based salutation (using RespondentInfo):
+  @[If('@[RespondentInfo.Gender]' == 'M')]Mr.@[ElseIf('@[RespondentInfo.Gender]' == 'F')]Ms.@[Else]Mr./Ms.@[EndIf]
+  @[If('@[RespondentInfo.Gender]' == 'M')]his@[ElseIf('@[RespondentInfo.Gender]' == 'F')]her@[Else]his/her@[EndIf]
+
+Gender-based salutation (using ComplainantInfo):
+  @[If('@[ComplainantInfo.Gender]' == 'M')]Mr.@[ElseIf('@[ComplainantInfo.Gender]' == 'F')]Ms.@[Else]Mr./Ms.@[EndIf]
+  @[If('@[ComplainantInfo.Gender]' == 'M')]his@[ElseIf('@[ComplainantInfo.Gender]' == 'F')]her@[Else]his/her@[EndIf]
+
+NOTE: Gender comparison in OBA templates uses 'M'/'F' raw codes (same as criminal templates).
+The RespondentInfo/ComplainantInfo Name records hold the same fields as other Name records
+(.Gender, .DateOfBirth, etc.).
+
+--------------------------------------------------------------------------------
+33. OBA CONTEXT — FORMATNAME PATTERNS WITH SETCASING
+--------------------------------------------------------------------------------
+OBA templates use FormatName(F L) (no middle name) and FormatName(L) (last only)
+extensively with SetCasing(Title). These are different from criminal templates which
+commonly use FormatName(F M L).
+
+FormatName(F L).SetCasing(Title) — first + last, title case:
+  @[Respondent.first.FormatName(F L).SetCasing(Title)]
+  @[Complainant.first.FormatName(F L).SetCasing(Title)]
+  @[Defense.first.FormatName(F L).SetCasing(Title)]
+  @[Prosecutor.first.FormatName(F L).SetCasing(Title)]
+  @[Investigator.first.FormatName(F L).SetCasing(Title)]
+  @[IntakeProsecutor.first.FormatName(F L).SetCasing(Title)]
+
+FormatName(L).SetCasing(Title) — last name only, title case:
+  @[Respondent.first.FormatName(L).SetCasing(Title)]
+  @[Defense.first.FormatName(L).SetCasing(Title)]
+  @[Complainant.first.FormatName(L).SetCasing(Title)]
+  @[Prosecutor.first.FormatName(L).SetCasing(Title)]
+  @[Investigator.first.FormatName(L).SetCasing(Title)]
+  @[IntakeProsecutor.first.FormatName(L).SetCasing(Title)]
+
+FormatName(F L).SetCasing(Upper) — first + last, all caps:
+  @[Respondent.first.FormatName(F L).SetCasing(Upper)]
+
+FormatName(F M L) — full name, no SetCasing (OBA attorney/prosecutor context):
+  @[Prosecutor.first.FormatName(F M L)]
+  @[Judge.first.FormatName(F M L)]
+
+FormatName(FILI) — initials-style (OBA closing, current user, prosecutor):
+  @[Prosecutor.first.FormatName(FILI)]
+  @[Investigator.first.FormatName(FILI)]
+  @[OBAAttorney.first.FormatName(FILI)]
+  @[cu.FormatName(FILI)]
+
+IMPORTANT: In OBA templates, FormatName(F L) is the standard for combined name display
+(not FormatName(F M L) which is more common in criminal templates). Always use (F L)
+for OBA Respondent/Complainant/Defense/Prosecutor inline name display.
+
+--------------------------------------------------------------------------------
+34. OBA CONTEXT — PRE-BOUND COLLECTIONS AND ADDITIONAL ENTITIES
+--------------------------------------------------------------------------------
+These entities are available in OBA template context without explicit CreateVar.
+They work like Respondent/Complainant and can be accessed directly.
+
+RespondentAtty — respondent's attorney (CaseAssignment, type CIT12):
+  @[RespondentAtty.first.PersonnelFirstName]
+  @[RespondentAtty.first.PersonnelLastName]
+  @[RespondentAtty.Any()]
+  @[RespondentAttyAddress.first.StreetAddress]
+  @[RespondentAttyAddress.first.City]
+  @[RespondentAttyAddress.first.State]
+  @[RespondentAttyAddress.first.Zip]
+
+Prosecutor (OBA context — CaseAssignment, type PROS):
+  @[Prosecutor.first.FormatName(FILI)]
+  @[Prosecutor.first.FormatName(F L).SetCasing(Title)]
+  @[Prosecutor.first.FormatName(L).SetCasing(Title)]
+  @[Prosecutor.first.FormatName(F M L)]
+  @[ProsecutorBarNum.first.Number]
+  @[ProsecutorPhone.first.PhoneNumber.FormatPhoneNumber()]
+  @[ProsecutorEmail.first.EmailAddress]
+  @[ProsecutorInfo.Prefix]   -- raw prefix from Name record (no GetLabel)
+
+Investigator (CaseAssignment, type CIT13):
+  @[Investigator.first.PersonnelFirstName]
+  @[Investigator.first.PersonnelLastName]
+  @[Investigator.first.FormatName(FILI)]
+  @[Investigator.first.FormatName(F L).SetCasing(Title)]
+  @[Investigator.first.FormatName(L).SetCasing(Title)]
+  @[Investigator.first.PhoneNumber.FormatPhoneNumber()]
+  @[InvestigatorPhone.first.PhoneNumber.FormatPhoneNumber()]
+  @[InvestigatorInfo.Prefix]   -- raw prefix from Name record
+
+IntakeProsecutor (CaseAssignment):
+  @[IntakeProsecutor.first.FormatName(F L).SetCasing(Title)]
+  @[IntakeProsecutor.first.FormatName(L).SetCasing(Title)]
+  @[IntakeProsecutorPhone.first.PhoneNumber.FormatPhoneNumber()]
+  @[IntakeProsecutorInfo.Prefix]
+
+ComplainantPhone / ComplainantDOCNum:
+  @[ComplainantPhone.ForEach(CP)]@[CP.PhoneNumber.FormatPhoneNumber()]@[ComplainantPhone.EndForEach]
+  @[If(@[ComplainantDOCNum.Any()] == true)]
+  @[ComplainantDOCNum.first.Number]
+
+RespondentPhone / RespondentEmail:
+  @[RespondentPhone.first.PhoneNumber.FormatPhoneNumber()]
+  @[RespondentEmail.first.EmailAddress]
+  @[RespondentBarNum.first.Number]   -- bar number for the respondent
+
+DefAttyBarNo (bar number from PersonnelNumber — criminal context):
+  @[CreateVar(@DefAttyBarNo,@PersonnelNumber.GetByQuery("PersonnelID":@[DefAtty.PersonnelID]))]
+  @[DefAttyBarNo.first.Number]
+
+AgencyAddress (address for the court/agency):
+  @[CreateVar(@AgencyAddress,@SystemAgencyAddress.GetByQuery("SystemAgencyID":@[CaseNumber.first.SystemAgencyID]))]
+  @[AgencyAddress.first.StreetAddress]
+
+CaseNumber (used to get court/agency name in headers):
+  @[CaseNumber.first.Number]
+  @[CaseNumber.first.SystemAgencyName]
+
+CourtNum (court-specific case number):
+  @[CourtNum.first.Number]
+  @[CreateVar(@CourtNum,@CaseAgency.GetByQuery("CaseID":@[builtIn.CaseID],"NumberType":"CRT"))]
+
+--------------------------------------------------------------------------------
+35. ANTI-HALLUCINATION — TOKENS THAT DO NOT EXIST
+--------------------------------------------------------------------------------
+The following patterns have been observed as LLM hallucinations. Do NOT generate them.
+
+INVALID FIELDS (these fields do not exist in Pine):
+  @[Complainant.first.StateIDNum]          -- no such field; use ComplainantDOCNum
+  @[AttyprosTitle.first.NameAttributeValue] -- invented variable/field
+  @[atty_pros_active.first.FormatName(FILI)] -- invented variable
+  @[DCNumber]                              -- use CaseNumber or CourtNum instead
+  @[VicWitOff.first.NameFirstName]         -- VicWitOff is not a standard entity
+  @[VicWitOff.first.NameLastName]
+
+INVALID FIELDS — CaseAssignment PersonnelName:
+  @[Prosecutor.first.PersonnelFirstName]   -- WRONG: Prosecutor is CaseAssignment
+  @[Prosecutor.first.PersonnelLastName]    -- use Prosecutor.first.FormatName(...) directly
+  @[DefAtty.first.PersonnelFirstName]      -- WRONG: DefAtty is CaseAssignment
+  @[DefAtty.first.PersonnelLastName]       -- use DefAtty.first.FormatName(...) directly
+  @[DefAtty.first.NameLastName]            -- WRONG: NameLastName is for CaseInvolvement only
+  NOTE: FormatName() can be called directly on CaseAssignment variables.
+
+INVALID SUBDOCUMENT FORM:
+  @[SubDocument(template)]   -- NOT valid. SubDocument only accepts numeric IDs.
+  @[SubDocument(header)]     -- NOT valid. Use the correct numeric ID.
+  CORRECT: @[SubDocument(3)], @[SubDocument(5)], @[SubDocument(7)], etc.
+
+WRONG ENTITY IN OBA CONTEXT:
+  @[Defendant.first.NameFirstName]   -- use @[Respondent.first.NameFirstName] in OBA templates
+  @[Defendant.first.NameLastName]    -- use @[Respondent.first.NameLastName] in OBA templates
+
+WRONG CASING ON PROSNUM:
+  @[ProsNum.first.Number.SetCasing(Upper)]  -- WRONG: ProsNum.Number should NOT have SetCasing
+  CORRECT: @[ProsNum.first.Number]
+
+SubDocument(3) and SubDocument(5) — OBA standard:
+  @[SubDocument(5)] appears at the very top of most OBA letters (header/letterhead block)
+  @[SubDocument(3)] appears just below @[SubDocument(5)] in the header area
+  Both are required in nearly all OBA correspondence templates.
+
+--------------------------------------------------------------------------------
+36. JDA SUBDOCUMENT NAME → PINE NUMERIC ID MAPPING
+--------------------------------------------------------------------------------
+In JDA/legacy templates, subdocuments are referenced by name paths like:
+  %[Subdocument(Template\Letterhead)]
+  %[Subdocument(Subdocs\_Header)]
+
+In Pine they become numeric: @[SubDocument(N)]
+
+This mapping is critical — the agent must NOT guess numeric IDs from names.
+
+OBA TEMPLATES — Template\* path family → always SubDocument(5) + SubDocument(3):
+  %[Subdocument(Template\Letterhead)]          → @[SubDocument(5)] @[SubDocument(3)]
+  %[Subdocument(Template\Address)]             → @[SubDocument(5)] @[SubDocument(3)]
+  %[Subdocument(Template\to R)]                → @[SubDocument(5)] @[SubDocument(3)]
+  %[Subdocument(Template\to C)]                → @[SubDocument(5)] @[SubDocument(3)]
+  %[Subdocument(Template\to R Certified)]      → @[SubDocument(5)] @[SubDocument(3)]
+  %[Subdocument(Template\to C Certified)]      → @[SubDocument(5)] @[SubDocument(3)]
+  %[Subdocument(Template\R addresses)]         → @[SubDocument(5)] @[SubDocument(3)]
+  %[Subdocument(Template\C addresses ...)]     → @[SubDocument(5)] @[SubDocument(3)]
+  %[Subdocument(Template\UPL R addresses)]     → @[SubDocument(5)] @[SubDocument(3)]
+  NOTE: In OBA context, SubDocument(5) comes first (header/letterhead), then SubDocument(3)
+  (address block). Any %[Subdocument(Template\*)] should produce BOTH, in order.
+
+CRIMINAL / PD TEMPLATES — Subdocs\* path family:
+  %[Subdocument(Subdocs\_Header)]              → @[SubDocument(9)]   (PD_Header)
+  %[Subdocument(Subdocs\_Letterhead)]          → @[SubDocument(7)]   (PD_Letterhead)
+  %[Subdocument(Subdocs\_EndOfLetter)]         → @[SubDocument(8)]   (PD_EndOfLetter / SubLetterHead)
+  %[Subdocument(Subdocs\Digital Signature)]    → @[SubDocument(27)]  (By Digital Signature)
+  %[Subdocument(Subdocs\ By Digital Signature)] → @[SubDocument(27)]
+  %[Subdocument(Subdocs\_Sig_CertofServiceDigSig)] → @[SubDocument(38)] (PD_Sig_CertOfService)
+  %[SUBDOC\\ SubLetterhead]                   → @[SubDocument(8)]
+  %[SUBDOC\\]                                 → @[SubDocument(30)]  (AttySigsNew)
+
+IMPORTANT: Do NOT invent subdocument IDs. If the JDA path is unrecognized, use the
+closest known equivalent from the mappings above based on the path name hint.
+Never produce @[SubDocument(template)] or @[SubDocument(header)] — only numeric IDs.
+
+--------------------------------------------------------------------------------
+37. JDA ENTITY MAPPING — ADDITIONAL / UNDOCUMENTED JDA VARIABLES
+--------------------------------------------------------------------------------
+These JDA entity names appear in templates but are not in the standard JDA prefix mapping.
+
+JW_Atty_Pros_Active / KF_Atty_Pros_Active  →  Prosecutor
+  (Active prosecuting attorney — maps to @[Prosecutor.first.FormatName(FILI)] or
+   @[Prosecutor.first.FormatName(F L).SetCasing(Title)] depending on context)
+  @[ProsNum.first.Number]        -- for the case agency (prosecution) number
+  @[ProsecutorBarNum.first.Number]  -- for the bar/FINUM number
+  @[ProsecutorPhone.first.PhoneNumber.FormatPhoneNumber()]  -- for the phone
+
+KF_AttyProsTitle.NameAttributeValue  →  NO Pine equivalent
+  This is an internal JDA attribute field with no direct Pine mapping.
+  Do NOT produce @[AttyprosTitle.first.NameAttributeValue] — it does not exist.
+  Use 'No mapping found' for this variable.
+
+kf_Atty_Pros_Active_AgencyNum.CaseAgencyNumber  →  @[ProsNum.first.Number]
+  (The prosecution case number)
+
+JW_Defendant_Address.*  →  DefAddress (NameAddress for Defendant)
+  .Address  → @[DefAddress.first.StreetAddress]
+  .City     → @[DefAddress.first.City]
+  .State    → @[DefAddress.first.State]
+  .Zip      → @[DefAddress.first.Zip]
+
+KF_PhoneNumberActive.PhoneNumber  →  active phone number from prosecution context
+  Maps to @[ProsecutorPhone.first.PhoneNumber.FormatPhoneNumber()] or the
+  relevant phone entity depending on document context.
+
+JW_DocumentEvents.*  →  Event query (date context)
+  JW_DocumentEvents.EventDt used as a date in letter headers maps to a date
+  prompt variable (e.g., @[DateOfLetter]) not a bound event expression.
 
 ================================================================================
 END OF PINE SYNTAX GROUND TRUTH

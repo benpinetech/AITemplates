@@ -4,10 +4,14 @@ from pathlib import Path
 
 from agent import Agent
 from utils import build_vector_store, load_vector_store
-from eval import evaluate_mappings, print_eval_report, print_batch_summary, save_eval_results, save_run
+from eval import (
+    evaluate_mappings, evaluate_output, print_eval_report, print_batch_summary,
+    save_eval_results, save_run, init_run_file, update_run_file,
+)
 from dotenv import load_dotenv
 import os
 import argparse
+import signal
 import time
 
 AGENT_DIR = Path(__file__).resolve().parent.parent
@@ -75,48 +79,76 @@ def main():
         all_results = []
 
         template_filter = set(args.templates) if args.templates else None
-        for legacy_file in sorted(legacy_dir.glob("*.rtf")):
-            if template_filter and legacy_file.name not in template_filter:
-                continue
-            pine_file = pine_dir / legacy_file.name
-            if not pine_file.exists():
-                print(f"Skipping {legacy_file.name} — no matching Pine template")
-                continue
+        planned = [
+            f.name for f in sorted(legacy_dir.glob("*.rtf"))
+            if (not template_filter or f.name in template_filter)
+            and (pine_dir / f.name).exists()
+        ]
 
-            print(f"\nEvaluating {legacy_file.name}")
-            with open(legacy_file, "r") as f:
-                legacy_template = f.read()
+        # Create the run file up front so crash-mid-run leaves a partial
+        # record on disk instead of losing everything.
+        run_path = init_run_file(
+            legacy_dir, pine_dir, EVAL_RUNS_DIR, args.label, planned_templates=planned,
+        )
 
-            start = time.time()
-            final_state = asyncio.run(agent.run(legacy_template=legacy_template))
-            duration = time.time() - start
+        # Translate SIGTERM (what the dashboard's Stop button sends) into
+        # KeyboardInterrupt so the same cleanup path runs and the run file
+        # gets its status flipped to "interrupted".
+        def _sigterm_to_interrupt(signum, frame):
+            raise KeyboardInterrupt()
+        signal.signal(signal.SIGTERM, _sigterm_to_interrupt)
 
-            # Save the generated output
-            EVAL_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-            output_path = EVAL_OUTPUT_DIR / legacy_file.name
-            with open(output_path, "w") as f:
-                f.write(final_state["generated_pine_template"])
+        try:
+            for legacy_file in sorted(legacy_dir.glob("*.rtf")):
+                if template_filter and legacy_file.name not in template_filter:
+                    continue
+                pine_file = pine_dir / legacy_file.name
+                if not pine_file.exists():
+                    print(f"Skipping {legacy_file.name} — no matching Pine template")
+                    continue
 
-            # Read ground truth content for the dashboard
-            with open(pine_file, "r") as f:
-                ground_truth_content = f.read()
+                print(f"\nEvaluating {legacy_file.name}")
+                with open(legacy_file, "r") as f:
+                    legacy_template = f.read()
 
-            # Score against human-verified Pine template
-            result = evaluate_mappings(final_state["mapped_pine_info"], pine_file)
-            print_eval_report(legacy_file.name, result, duration)
+                start = time.time()
+                final_state = asyncio.run(agent.run(legacy_template=legacy_template))
+                duration = time.time() - start
 
-            all_results.append({
-                "template": legacy_file.name,
-                "duration": duration,
-                "result": result,
-                "legacy_content": legacy_template,
-                "generated_content": final_state["generated_pine_template"],
-                "ground_truth_content": ground_truth_content,
-            })
+                # Save the generated output
+                EVAL_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+                output_path = EVAL_OUTPUT_DIR / legacy_file.name
+                with open(output_path, "w") as f:
+                    f.write(final_state["generated_pine_template"])
 
-        print_batch_summary(all_results)
-        save_eval_results(all_results, EVAL_OUTPUT_DIR / "eval_results.json")
-        save_run(all_results, legacy_dir, pine_dir, EVAL_RUNS_DIR, args.label)
+                # Read ground truth content for the dashboard
+                with open(pine_file, "r") as f:
+                    ground_truth_content = f.read()
+
+                # Score against human-verified Pine template using generated output
+                result = evaluate_output(final_state["generated_pine_template"], pine_file)
+                print_eval_report(legacy_file.name, result, duration)
+
+                all_results.append({
+                    "template": legacy_file.name,
+                    "duration": duration,
+                    "result": result,
+                    "legacy_content": legacy_template,
+                    "generated_content": final_state["generated_pine_template"],
+                    "ground_truth_content": ground_truth_content,
+                })
+
+                # Persist after every template so an early exit keeps everything so far.
+                update_run_file(run_path, all_results, status="in_progress")
+
+            print_batch_summary(all_results)
+            save_eval_results(all_results, EVAL_OUTPUT_DIR / "eval_results.json")
+            update_run_file(run_path, all_results, status="complete")
+            print(f"Run saved to {run_path}")
+        except KeyboardInterrupt:
+            update_run_file(run_path, all_results, status="interrupted")
+            print(f"\nInterrupted. Partial run saved to {run_path}")
+            raise
 
     elif args.single_eval:
         print("Running one-off single evaluation (not saved to runs).")
@@ -133,7 +165,7 @@ def main():
         final_state = asyncio.run(agent.run(legacy_template=legacy_template))
         duration = time.time() - start
 
-        result = evaluate_mappings(final_state["mapped_pine_info"], pine_file)
+        result = evaluate_output(final_state["generated_pine_template"], pine_file)
         print_eval_report(legacy_file.name, result, duration)
 
         if args.output_json:

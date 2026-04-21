@@ -6,7 +6,7 @@ PYTHON      := $(VENV)/bin/python
 PIP         := $(VENV)/bin/pip
 STREAMLIT   := $(VENV)/bin/streamlit
 
-.PHONY: run\:eval dev install
+.PHONY: run\:eval dev install cleandb
 
 # Start the FastAPI agent server and the Streamlit eval GUI in parallel.
 # Ctrl-C kills both.
@@ -20,6 +20,10 @@ run\:eval:
 # Streamlit only, with hot reload on save. No API server — assumes it's already running.
 dev:
 	STREAMLIT_BROWSER_GATHER_USAGE_STATS=false $(STREAMLIT) run $(GUI_DIR)/Home.py --server.port 8501 --server.runOnSave true
+
+cleandb:
+	rm -rf $(AGENT_DIR)/chroma_db $(AGENT_DIR)/mapping_db
+	@echo "Deleted chroma_db and mapping_db"
 
 install:
 	@if [ ! -d "$(VENV)" ]; then \

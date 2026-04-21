@@ -10,6 +10,7 @@ import tempfile
 from collections import Counter
 from pathlib import Path
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 
@@ -38,7 +39,7 @@ if st.session_state.get("stop_requested") and st.session_state.get("eval_proc_pi
     st.session_state.pop("stop_requested", None)
     st.session_state.pop("eval_proc_pid", None)
     st.session_state.eval_running = False
-    st.warning("Run stopped early — partial results were not saved.")
+    st.warning("Run stopped early. Templates completed before stop are saved in the run history.")
 
 # ── init renderer once ────────────────────────────────────────────────────────
 if "renderer_checked" not in st.session_state:
@@ -396,24 +397,55 @@ st.subheader("All Runs")
 chart_df = pd.DataFrame([
     {
         "Run": r.get("label") or r["run_id"],
+        "Run ID": r["run_id"],
         "Timestamp": r["timestamp"][:19].replace("T", " "),
+        "Status": r.get("status", "complete"),
+        "Templates": r["summary"]["total_templates"],
         "Micro F1": round(r["summary"]["micro_f1"], 4),
         "Micro Recall": round(r["summary"]["micro_recall"], 4),
         "Micro Precision": round(r["summary"]["micro_precision"], 4),
+        "Macro F1": round(r["summary"]["macro_f1"], 4),
     }
     for r in runs
 ]).sort_values("Timestamp")
 
-st.line_chart(
-    chart_df.set_index("Timestamp")[["Micro F1", "Micro Recall", "Micro Precision"]],
-    height=250,
+# Long-form for multi-metric altair chart
+long_df = chart_df.melt(
+    id_vars=["Run", "Run ID", "Timestamp", "Status", "Templates"],
+    value_vars=["Micro F1", "Micro Recall", "Micro Precision"],
+    var_name="Metric",
+    value_name="Value",
 )
 
+base = alt.Chart(long_df).encode(
+    x=alt.X("Timestamp:N", sort=None, title=None, axis=alt.Axis(labelAngle=-30)),
+    y=alt.Y("Value:Q", scale=alt.Scale(domain=[0, 1]), axis=alt.Axis(format="%")),
+    color=alt.Color("Metric:N", legend=alt.Legend(orient="top")),
+    tooltip=[
+        alt.Tooltip("Run:N"),
+        alt.Tooltip("Timestamp:N"),
+        alt.Tooltip("Templates:Q"),
+        alt.Tooltip("Status:N"),
+        alt.Tooltip("Metric:N"),
+        alt.Tooltip("Value:Q", format=".1%"),
+    ],
+)
+line = base.mark_line(point=True, strokeWidth=2)
+st.altair_chart(line.properties(height=260), use_container_width=True)
+
 # Runs summary table
+def _status_badge(s: str) -> str:
+    return {
+        "complete": "✅ complete",
+        "in_progress": "⏳ in progress",
+        "interrupted": "⚠ interrupted",
+    }.get(s, s)
+
 table_df = pd.DataFrame([
     {
         "Run ID": r["run_id"],
         "Label": r.get("label", ""),
+        "Status": _status_badge(r.get("status", "complete")),
         "Timestamp": r["timestamp"][:19].replace("T", " "),
         "Templates": r["summary"]["total_templates"],
         "Micro F1": r["summary"]["micro_f1"],
@@ -445,60 +477,157 @@ st.dataframe(
 
 st.divider()
 
-# ── aggregate token analytics (across all runs) ───────────────────────────────
-st.subheader("Token Analytics — All Runs")
-
-missing_counter: Counter = Counter()
-extra_counter: Counter = Counter()
-for r in runs:
-    for t in r.get("templates", []):
-        missing_counter.update(t.get("missing", []))
-        extra_counter.update(t.get("extra", []))
-
-an_col1, an_col2 = st.columns(2)
-
-with an_col1:
-    st.markdown("**Top 10 Most Common Missing**")
-    if missing_counter:
-        st.dataframe(
-            pd.DataFrame(missing_counter.most_common(10), columns=["Token", "Count"]),
-            use_container_width=True,
-            hide_index=True,
-        )
-    else:
-        st.caption("No data yet.")
-
-with an_col2:
-    st.markdown("**Top 10 Most Common Extra**")
-    if extra_counter:
-        st.dataframe(
-            pd.DataFrame(extra_counter.most_common(10), columns=["Token", "Count"]),
-            use_container_width=True,
-            hide_index=True,
-        )
-    else:
-        st.caption("No data yet.")
-
-st.divider()
-
 # ── run detail ────────────────────────────────────────────────────────────────
 selected_run = next((r for r in runs if r["run_id"] == selected_run_id), None)
 if not selected_run:
     st.stop()
 
-s = selected_run["summary"]
-st.subheader(f"Run: {selected_run.get('label') or selected_run_id}")
-st.caption(selected_run["timestamp"][:19].replace("T", " "))
+# Find the previous run (by timestamp) for delta comparison
+runs_by_time = sorted(runs, key=lambda r: r["timestamp"])
+sel_idx = next((i for i, r in enumerate(runs_by_time) if r["run_id"] == selected_run_id), -1)
+previous_run = runs_by_time[sel_idx - 1] if sel_idx > 0 else None
 
+s = selected_run["summary"]
+status_label = _status_badge(selected_run.get("status", "complete"))
+st.subheader(f"Run: {selected_run.get('label') or selected_run_id}")
+st.caption(f"{selected_run['timestamp'][:19].replace('T', ' ')}  ·  {status_label}")
+
+# Metric deltas vs previous run (when available)
+def _delta_pct(curr: float, prev: float | None) -> str | None:
+    if prev is None:
+        return None
+    d = curr - prev
+    if abs(d) < 1e-6:
+        return None
+    return f"{d:+.1%}"
+
+prev_s = previous_run["summary"] if previous_run else None
 m1, m2, m3, m4, m5, m6 = st.columns(6)
-m1.metric("Micro F1",        pct(s["micro_f1"]))
-m2.metric("Micro Recall",    pct(s["micro_recall"]))
-m3.metric("Micro Precision", pct(s["micro_precision"]))
-m4.metric("Macro F1",        pct(s["macro_f1"]))
+m1.metric("Micro F1",        pct(s["micro_f1"]),        delta=_delta_pct(s["micro_f1"], prev_s["micro_f1"] if prev_s else None))
+m2.metric("Micro Recall",    pct(s["micro_recall"]),    delta=_delta_pct(s["micro_recall"], prev_s["micro_recall"] if prev_s else None))
+m3.metric("Micro Precision", pct(s["micro_precision"]), delta=_delta_pct(s["micro_precision"], prev_s["micro_precision"] if prev_s else None))
+m4.metric("Macro F1",        pct(s["macro_f1"]),        delta=_delta_pct(s["macro_f1"], prev_s["macro_f1"] if prev_s else None))
 m5.metric("Templates",       s["total_templates"])
 m6.metric("Duration",        fmt_duration(s["total_duration"]))
 
 templates = selected_run.get("templates", [])
+
+# ── per-template F1 bar chart for the selected run ────────────────────────────
+if templates:
+    per_tmpl_df = pd.DataFrame([
+        {
+            "Template": t["name"].removesuffix(".rtf"),
+            "F1": t["f1"],
+            "Recall": t["recall"],
+            "Precision": t["precision"],
+            "Missing": t["missing_count"],
+            "Extra": t["extra_count"],
+        }
+        for t in templates
+    ])
+    bar = (
+        alt.Chart(per_tmpl_df)
+        .mark_bar()
+        .encode(
+            x=alt.X("Template:N", sort="-y", axis=alt.Axis(labelAngle=-45)),
+            y=alt.Y("F1:Q", scale=alt.Scale(domain=[0, 1]), axis=alt.Axis(format="%")),
+            color=alt.Color(
+                "F1:Q",
+                scale=alt.Scale(
+                    domain=[0.0, 0.65, 0.85, 1.0],
+                    range=["#c0392b", "#e67e22", "#f1c40f", "#27ae60"],
+                ),
+                legend=None,
+            ),
+            tooltip=[
+                alt.Tooltip("Template:N"),
+                alt.Tooltip("F1:Q", format=".1%"),
+                alt.Tooltip("Recall:Q", format=".1%"),
+                alt.Tooltip("Precision:Q", format=".1%"),
+                alt.Tooltip("Missing:Q"),
+                alt.Tooltip("Extra:Q"),
+            ],
+        )
+        .properties(height=260, title="Per-template F1 (this run)")
+    )
+    st.altair_chart(bar, use_container_width=True)
+
+# ── token analytics for the selected run (with delta vs previous) ─────────────
+st.markdown("### Token Analytics — This Run")
+
+run_missing = Counter()
+run_extra = Counter()
+for t in templates:
+    run_missing.update(t.get("missing", []))
+    run_extra.update(t.get("extra", []))
+
+if previous_run:
+    prev_missing = Counter()
+    prev_extra = Counter()
+    for t in previous_run.get("templates", []):
+        prev_missing.update(t.get("missing", []))
+        prev_extra.update(t.get("extra", []))
+    prev_label = previous_run.get("label") or previous_run["run_id"]
+    st.caption(f"Δ columns compare against previous run: **{prev_label}**")
+else:
+    prev_missing = prev_extra = Counter()
+    st.caption("No previous run to compare against — showing absolute counts.")
+
+def _token_table(curr: Counter, prev: Counter, top: int = 15) -> pd.DataFrame:
+    rows = []
+    for token, count in curr.most_common(top):
+        delta = count - prev.get(token, 0)
+        rows.append({"Token": token, "Count": count, "Δ": delta})
+    return pd.DataFrame(rows)
+
+an_col1, an_col2 = st.columns(2)
+
+with an_col1:
+    st.markdown(f"**Most Common Missing ({sum(run_missing.values())} total)**")
+    if run_missing:
+        df = _token_table(run_missing, prev_missing)
+        st.dataframe(df, use_container_width=True, hide_index=True, height=380)
+    else:
+        st.caption("None — all expected tokens were produced.")
+
+    # New missing this run
+    newly_missing = sorted(set(run_missing) - set(prev_missing))
+    fixed = sorted(set(prev_missing) - set(run_missing))
+    if previous_run and (newly_missing or fixed):
+        with st.expander(f"Regressions: {len(newly_missing)} new missing · {len(fixed)} fixed"):
+            if newly_missing:
+                st.markdown("**Newly missing this run**")
+                for t in newly_missing[:50]:
+                    st.code(t, language=None)
+            if fixed:
+                st.markdown("**No longer missing**")
+                for t in fixed[:50]:
+                    st.code(t, language=None)
+
+with an_col2:
+    st.markdown(f"**Most Common Extra ({sum(run_extra.values())} total)**")
+    if run_extra:
+        df = _token_table(run_extra, prev_extra)
+        st.dataframe(df, use_container_width=True, hide_index=True, height=380)
+    else:
+        st.caption("None — no hallucinated tokens.")
+
+    newly_extra = sorted(set(run_extra) - set(prev_extra))
+    resolved_extra = sorted(set(prev_extra) - set(run_extra))
+    if previous_run and (newly_extra or resolved_extra):
+        with st.expander(f"Regressions: {len(newly_extra)} new extra · {len(resolved_extra)} resolved"):
+            if newly_extra:
+                st.markdown("**Newly extra this run**")
+                for t in newly_extra[:50]:
+                    st.code(t, language=None)
+            if resolved_extra:
+                st.markdown("**No longer extra**")
+                for t in resolved_extra[:50]:
+                    st.code(t, language=None)
+
+st.divider()
+st.markdown("### Per-template Breakdown")
+
 tmpl_df = pd.DataFrame([
     {
         "Template": t["name"],

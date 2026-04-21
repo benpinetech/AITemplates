@@ -4,8 +4,11 @@ from langchain_core.messages import SystemMessage, HumanMessage, ToolMessage, AI
 from prompts import mapping_prompt
 from striprtf.striprtf import rtf_to_text
 import re
+from pathlib import Path
 from mappingdb import MappingDB
 from state import mapping
+
+_MAPPING_DB_DIR = str(Path(__file__).resolve().parent.parent / "mapping_db")
 
 class MappingResponse(BaseModel):
     """List of legacy-to-Pine mappings returned by the LLM."""
@@ -16,8 +19,23 @@ def _is_hex(c: str) -> bool:
     return c in '0123456789abcdefABCDEF'
 
 
+def _normalize_rtf(rtf_content: str) -> str:
+    """Collapse split %[...] tokens where RTF puts % and [ in adjacent runs.
+
+    RTF sometimes emits: ...loch\f1 %}{\rtlch...\loch\f1 \n[Token]}
+    After collapsing:    ...loch\f1 %[Token]}
+
+    This must be applied to the template BEFORE span computation so that the
+    returned spans are valid positions in the normalized string.
+    """
+    return re.sub(r'%\}(?:\{[^\[\]]*?\n)(?=\[)', '%', rtf_content)
+
+
 def extract_fillpoints(rtf_content: str) -> tuple[list[str], list[tuple[int, int, str]]]:
     """Extract legacy %[...] fillpoints from raw RTF, stripping embedded RTF control codes.
+
+    rtf_content must already be normalized via _normalize_rtf() so that spans
+    correspond to positions in the same string that replace_fillpoints will use.
 
     Returns:
         (unique_fillpoints, spans) where spans is a list of (start, end, cleaned)
@@ -99,16 +117,135 @@ def extract_fillpoints(rtf_content: str) -> tuple[list[str], list[tuple[int, int
     return unique, spans
 
 
+_INVERTED_IF_RE = re.compile(
+    r'%\[if\([^]]*\.\s*(isempty|isnullorempty)\s*[=(]\s*(true|1)\b',
+    re.IGNORECASE
+)
+
+# Involvement entities: respondent/complainant/defendant being investigated
+_INVOLVEMENT_TOKEN_RE = re.compile(
+    r'^%\[\s*(?:JW_|Cust_|KF_|kf_)?(?:Respondent|Complainant|Defendant|VicWitOff)\.',
+    re.IGNORECASE
+)
+# Assignment entities: attorneys/counsel/staff on the case
+_ASSIGNMENT_TOKEN_RE = re.compile(
+    r'^%\[\s*(?:JW_|Cust_|KF_|kf_)?(?:RespondentAtty|DefAtty|Defense|OBAAttorney|Prosecutor|AttyPros)',
+    re.IGNORECASE
+)
+
+
+def _reverse_co_direction(branch_content: str) -> str:
+    """If the branch has [involvement_token] ... c/o ... [assignment_token], swap their positions.
+
+    In Pine, the convention is to address the letter to the attorney (assignment entity)
+    with the respondent (involvement entity) as the "care of" party — the opposite of
+    how the legacy JDA template often writes it.
+    """
+    _, branch_spans = extract_fillpoints(branch_content)
+    if len(branch_spans) < 2:
+        return branch_content
+
+    t1_start, t1_end, t1_clean = branch_spans[0]
+    t2_start, t2_end, t2_clean = branch_spans[1]
+
+    middle = branch_content[t1_end:t2_start]
+    if 'c/o' not in middle.lower():
+        return branch_content
+
+    if not (_INVOLVEMENT_TOKEN_RE.match(t1_clean) and _ASSIGNMENT_TOKEN_RE.match(t2_clean)):
+        return branch_content
+
+    # Reverse: assignment entity first, then middle (includes "c/o"), then involvement entity
+    reversed_content = (
+        branch_content[:t1_start]
+        + branch_content[t2_start:t2_end]   # assignment token where involvement was
+        + branch_content[t1_end:t2_start]   # middle (unchanged, contains "c/o")
+        + branch_content[t1_start:t1_end]   # involvement token where assignment was
+        + branch_content[t2_end:]
+    )
+    print(f"  Reversed c/o direction in branch: {t2_clean[:40]} c/o {t1_clean[:40]}")
+    return reversed_content
+
+
+def _swap_inverted_branches(rtf_content: str) -> str:
+    """Swap If/Else branch content for JDA conditionals that use IsEmpty=true.
+
+    JDA: %[If(X.IsEmpty=true)] [A] %[Else] [B] %[EndIf]
+      means "if X is empty, show A; otherwise show B"
+
+    Pine maps the condition to Any()==true (entity exists), which is the opposite
+    polarity, so the branches must be swapped BEFORE token replacement:
+      %[If(X.IsEmpty=true)] [B] %[Else] [A] %[EndIf]
+    After replacement this becomes:
+      @[If(@[X.Any()] == true)] [B] @[Else] [A] @[EndIf]  ← correct semantics
+
+    Only swaps when a matching %[Else] exists (no-Else blocks are different).
+    Handles nested conditionals correctly via depth tracking.
+    """
+    _, spans = extract_fillpoints(rtf_content)
+
+    inversions = []
+    for i, (start, end, cleaned) in enumerate(spans):
+        if not _INVERTED_IF_RE.search(cleaned):
+            continue
+        depth = 1
+        else_idx = endif_idx = None
+        for j in range(i + 1, len(spans)):
+            c = spans[j][2].lower().strip()
+            if re.match(r'%\[if\(', c):
+                depth += 1
+            elif c == '%[else]' and depth == 1:
+                else_idx = j
+            elif c == '%[endif]':
+                depth -= 1
+                if depth == 0:
+                    endif_idx = j
+                    break
+        if else_idx is not None and endif_idx is not None:
+            inversions.append((i, else_idx, endif_idx))
+
+    # Apply swaps back-to-front so earlier span positions stay valid
+    for if_idx, else_idx, endif_idx in reversed(inversions):
+        if_start,    if_end,    _ = spans[if_idx]
+        else_start,  else_end,  _ = spans[else_idx]
+        endif_start, endif_end, _ = spans[endif_idx]
+
+        if_branch   = rtf_content[if_end:else_start]
+        else_branch = rtf_content[else_end:endif_start]
+        if_token    = rtf_content[if_start:if_end]
+        else_token  = rtf_content[else_start:else_end]
+        endif_token = rtf_content[endif_start:endif_end]
+
+        # The Else-branch becomes the new If-true branch (has-entity case).
+        # In Pine the convention is: attorney (assignment entity) listed first, then
+        # "c/o" respondent (involvement entity) — opposite of many legacy templates.
+        else_branch = _reverse_co_direction(else_branch)
+
+        rtf_content = (
+            rtf_content[:if_start]
+            + if_token + else_branch + else_token + if_branch + endif_token
+            + rtf_content[endif_end:]
+        )
+        print(f"  Swapped inverted branch: {spans[if_idx][2][:60]}...")
+
+    return rtf_content
+
+
 def make_extraction_call():
     """Deterministic extraction of legacy fillpoints from RTF.
     No LLM needed — parses %[...] tokens directly.
     """
     def extraction_call(state: dict):
-        fillpoints, spans = extract_fillpoints(state['legacy_template'])
+        # 1. Collapse RTF-split %[ tokens
+        normalized = _normalize_rtf(state['legacy_template'])
+        # 2. Swap branches for IsEmpty=true conditionals before span extraction
+        prepared = _swap_inverted_branches(normalized)
+        fillpoints, spans = extract_fillpoints(prepared)
         print(f"Extracted {len(fillpoints)} unique fillpoints ({len(spans)} total occurrences)")
         return {
             "extracted_legacy_info": fillpoints,
             "fillpoint_spans": spans,
+            "legacy_template": prepared,  # replace_fillpoints uses the same string
         }
 
     return extraction_call
@@ -187,6 +324,7 @@ def make_mapping_finalize(model):
 
         for m in response.mappings:
             m.loaded = False
+            m.pine = _strip_invented_structure(m.legacy, m.pine)
 
         print("Finalizing mapped Pine syntax")
         for m in response.mappings:
@@ -236,7 +374,7 @@ def load_mappings(state: dict):
         Args: state: the current agent state
     """
     print("Loading existing mappings from the database")
-    with MappingDB("../mapping_db") as db:
+    with MappingDB(_MAPPING_DB_DIR) as db:
         mappings = []
         unmapped_legacy_info = []
         purged = 0
@@ -269,7 +407,7 @@ def save_mappings(state: dict):
     skipped_bad = 0
     skipped_prompt = 0
     skipped_ctx = 0
-    with MappingDB("../mapping_db") as db:
+    with MappingDB(_MAPPING_DB_DIR) as db:
         for mapped in state.get('mapped_pine_info', []):
             if mapped.loaded:
                 continue
@@ -295,6 +433,28 @@ def save_mappings(state: dict):
             mapped.loaded = True
     print(f"Saved {mapping_counter} new mappings (skipped: {skipped_bad} bad, {skipped_prompt} prompt, {skipped_ctx} context-dep)")
     return {}
+
+
+_STRUCTURAL_PATTERN = re.compile(
+    r'@\[\s*(?:If\b|ElseIf\b|Else\b|EndIf\b|ForEach\b|EndForEach\b)[^\]]*\]',
+    re.IGNORECASE
+)
+
+def _strip_invented_structure(legacy: str, pine: str) -> str:
+    """Remove structural Pine tokens (@[If], @[Else], @[EndIf], @[ForEach], @[EndForEach])
+    that the LLM invents when the input token is not itself a structural/conditional token.
+
+    Structural tokens are only valid mappings when the source JDA token is itself structural
+    (e.g., %[If(...)], %[Else], %[EndIf]).
+    """
+    lower = legacy.strip().lower()
+    # If the input IS a structural token, leave the output untouched
+    if re.match(r'%\[\s*(if\b|elseif\b|else\b|endif\b|foreach\b|endforeach\b)', lower):
+        return pine
+    # Otherwise strip any structural tokens the LLM added
+    cleaned = _STRUCTURAL_PATTERN.sub('', pine)
+    cleaned = re.sub(r'\s{2,}', ' ', cleaned).strip()
+    return cleaned if cleaned else pine
 
 
 def _is_bad_mapping(pine_value: str) -> bool:
