@@ -1,0 +1,167 @@
+# OBA (Oklahoma Bar Association) overrides — sections 31–34 of
+# pine_syntax_ground_truth.txt distilled into queryable form.
+#
+# Two roles:
+#   1. Documentation of OBA-specific Pine conventions (defaults that
+#      differ from the criminal/PD context).
+#   2. Stand-in vocabulary allow-list until the live org-variable API
+#      lands. The validator (Phase 4) reads `vocabulary` from this
+#      file when the API is unavailable.
+
+[org]
+id          = "oba"
+description = "Oklahoma Bar Association disciplinary templates"
+notes       = "Sections 31–34 of pine_syntax_ground_truth.txt; OBA letter / hearing forms."
+
+
+# ─── conventions (§31, §33) ───────────────────────────────────────────────
+[org.conventions]
+# OBA combined-name display uses (F L), not (F M L) like criminal/PD.
+combined_name_format = "FormatName(F L).SetCasing(Title)"
+last_name_only_format = "FormatName(L).SetCasing(Title)"
+attorney_initials_format = "FormatName(FILI)"
+
+# OBA address fields generally do NOT take .SetCasing(Title), even when
+# the JDA source has TitleCase wrapping. Defense/DefenseAddress sometimes
+# differ — see address_setcasing_exceptions.
+address_setcasing_default = false
+address_setcasing_exceptions = ["DefenseAddress"]   # specific PD/criminal templates may keep SetCasing
+
+# Gender pronoun blocks read off RespondentInfo / ComplainantInfo
+# Name records, loaded via CreateVar from <Entity>.first.NameID.
+gender_record_pattern = "<Entity>Info"
+
+
+# ─── pre-bound collections (§31, §34) ─────────────────────────────────────
+# These Pine variables are available in OBA template contexts without
+# an explicit CreateVar. They behave like Respondent / Complainant —
+# accessed directly with .first.<field>.
+
+[org.pre_bound_collections]
+RespondentAtty = "respondent's attorney (CaseAssignment, type CIT12)"
+OBAAttorney = "OBA prosecuting attorney (CaseAssignment, type CIT14)"
+Defense = "respondent's attorney in OBA disciplinary context"
+DefenseAddress = "address for the Defense attorney"
+DefenseInfo = "Name record for the Defense attorney (gender / prefix)"
+DefenseBarNum = "bar number for the Defense attorney"
+DefenseWorkPhone = "Defense attorney work phone"
+DefenseFaxPhone = "Defense attorney fax phone"
+Prosecutor = "OBA prosecutor (CaseAssignment, type PROS)"
+ProsecutorBarNum = "bar number for the OBA prosecutor"
+ProsecutorPhone = "phone for the OBA prosecutor"
+ProsecutorEmail = "email for the OBA prosecutor"
+ProsecutorInfo = "Name record for the OBA prosecutor (prefix / gender)"
+Investigator = "investigator (CaseAssignment, type CIT13)"
+InvestigatorPhone = "investigator phone"
+InvestigatorInfo = "Name record for the investigator"
+IntakeProsecutor = "intake prosecutor"
+IntakeProsecutorPhone = "intake prosecutor phone"
+IntakeProsecutorInfo = "Name record for intake prosecutor"
+ComplainantPhone = "complainant phone collection"
+ComplainantDOCNum = "complainant DOC number"
+RespondentPhone = "respondent phone"
+RespondentEmail = "respondent email"
+RespondentBarNum = "respondent bar number"
+RespondentInfo = "Name record for the respondent (gender / prefix)"
+ComplainantInfo = "Name record for the complainant (gender / prefix)"
+
+
+# ─── Subdocument expansion (§36, OBA family) ─────────────────────────────
+# In OBA context, ANY %[Subdocument(Template\\*)] expands to the same
+# pair of numeric IDs. The transform `subdocument_path_to_pine_ids`
+# already encodes this; the table is here for documentation and to
+# make the org-aware behavior visible.
+
+[org.subdoc_template_family]
+path_prefix = "Template\\"
+output_ids = [5, 3]
+notes = "Any path under Template\\* in OBA produces SubDocument(5) then SubDocument(3) in source order."
+
+
+# ─── vocabulary allow-list ────────────────────────────────────────────────
+# The set of valid Pine entity / variable names that may appear in OBA
+# Pine output. Anything else is suspicious and the validator should
+# surface it for review. Compiled from sections 26, 31–34, and the
+# verified-pair corpus.
+#
+# Until the live org-variable API exists, this list is the
+# vocabulary stand-in — see ../README.md §4.2.
+
+[org.vocabulary]
+entities = [
+  # Involvement
+  "Respondent",
+  "Complainant",
+  "FilingComplainant",
+  "PrimaryInvolvement",
+  # Assignment
+  "OBAAttorney",
+  "Defense",
+  "Prosecutor",
+  "Investigator",
+  "IntakeProsecutor",
+  "RespondentAtty",
+  # Addresses
+  "RespondentAddress",
+  "ComplainantAddress",
+  "RespondentAttyAddress",
+  "DefenseAddress",
+  # Info / Name records
+  "RespondentInfo",
+  "ComplainantInfo",
+  "DefenseInfo",
+  "ProsecutorInfo",
+  "InvestigatorInfo",
+  "IntakeProsecutorInfo",
+  # Contact
+  "RespondentPhone",
+  "RespondentEmail",
+  "ComplainantPhone",
+  "DefenseWorkPhone",
+  "DefenseFaxPhone",
+  "ProsecutorPhone",
+  "ProsecutorEmail",
+  "InvestigatorPhone",
+  "IntakeProsecutorPhone",
+  # Numbers
+  "ProsNum",
+  "RespondentBarNum",
+  "ProsecutorBarNum",
+  "DefenseBarNum",
+  "ComplainantDOCNum",
+  "CaseNumber",
+  "CourtNum",
+  # User
+  "cu",
+  # Common CreateVar'd collections referenced without inline decl
+  "Charges",
+  "PrimCharge",
+  "Fees",
+  "myCase",
+  "Cse",
+  "DefName",
+  "ChildName",
+  "VicName",
+  "PIPName",
+  "FutureEvents",
+  "PleaDeadline",
+  "Sentence",
+]
+
+builtins = [
+  "builtin.CaseID",
+  "builtin.CurrentUserPersonnelID",
+  "builtin.CurrentUserUserID",
+  "builtin.Today",
+  "builtin.today",
+]
+
+prompt_variables = [
+  "DateOfLetter",
+  "LetterToComplainantDate",
+  "DateLetterReceived",
+  "ResponseDueDate",
+  "DateOfCourtOrder",
+  "PRCMeeting",
+  "ARCDates",
+]

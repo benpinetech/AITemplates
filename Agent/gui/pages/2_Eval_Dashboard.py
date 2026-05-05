@@ -27,8 +27,12 @@ DEFAULT_PINE_DIR = str(GROUND_TRUTH_DIR / "evaluation_templates" / "jda_to_pine"
 sys.path.insert(0, str(GUI_DIR))
 from rtf_render import init_renderer, render_rtf, highlight_legacy, highlight_pine, highlight_ground_truth
 
-st.set_page_config(page_title="Eval Dashboard", layout="wide")
+st.set_page_config(page_title="Eval Dashboard (v1)", layout="wide")
 st.title("Evaluation Dashboard")
+st.caption(
+    "v1 — runs and metrics from the original token-by-token agent. "
+    "For the chunk-based pipeline, see the **v2 Pipeline** page."
+)
 
 # ── handle pending stop request ───────────────────────────────────────────────
 if st.session_state.get("stop_requested") and st.session_state.get("eval_proc_pid"):

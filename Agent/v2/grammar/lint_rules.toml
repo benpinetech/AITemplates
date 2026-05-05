@@ -1,0 +1,111 @@
+# Lint rules — anti-patterns that the validator should reject.
+#
+# Source: pine_syntax_ground_truth.txt §35 ("ANTI-HALLUCINATION —
+# tokens that do not exist") plus targeted additions from §30/§36/§37.
+#
+# Each [[lint_rule]] is matched as a regex over the *unparsed* Pine
+# token text (the result of PineToken.unparse()). When v2 grows lint
+# rules that need AST shape matching rather than text matching, add
+# an `ast_match` field — text patterns will keep working alongside.
+#
+# Severity:
+#   error   — the validator blocks output until fixed
+#   warning — the validator surfaces it to the mapper but doesn't block
+
+[[lint_rule]]
+id          = "no_setcasing_on_prosnum"
+description = "ProsNum.Number must not have SetCasing applied"
+match_regex = "@\\[ProsNum\\.first\\.Number\\.SetCasing\\("
+severity    = "error"
+fix_hint    = "Drop the .SetCasing(...) — ProsNum.Number is rendered verbatim"
+notes       = "§35 anti-hallucination; §30 case details mapping"
+
+
+[[lint_rule]]
+id          = "no_subdocument_template_form"
+description = "SubDocument argument must be a numeric ID, never a name like 'template' or 'header'"
+match_regex = "@\\[SubDocument\\((?:template|header|address|letterhead)\\)\\]"
+severity    = "error"
+fix_hint    = "Look up the correct numeric ID in §36 and emit @[SubDocument(N)]"
+notes       = "§35; §36 path → numeric ID table"
+
+
+[[lint_rule]]
+id          = "no_state_id_num_field"
+description = "Complainant.first.StateIDNum is not a real field; use ComplainantDOCNum"
+match_regex = "@\\[(?:Complainant|Respondent)\\.first\\.StateIDNum\\]"
+severity    = "error"
+fix_hint    = "Use @[ComplainantDOCNum.first.Number] or @[RespondentDOCNum.first.Number]"
+notes       = "§35 — field does not exist in Pine"
+
+
+[[lint_rule]]
+id          = "no_atty_pros_title_field"
+description = "AttyprosTitle.first.NameAttributeValue is invented; no Pine equivalent"
+match_regex = "@\\[AttyprosTitle\\.first\\.NameAttributeValue\\]"
+severity    = "error"
+fix_hint    = "Map %[KF_AttyProsTitle.NameAttributeValue] to 'No mapping found' (drop the field)"
+notes       = "§35, §37"
+
+
+[[lint_rule]]
+id          = "no_dcnumber_field"
+description = "DCNumber is not a Pine variable; use CaseNumber or CourtNum"
+match_regex = "@\\[DCNumber(?:\\b|\\.)"
+severity    = "error"
+fix_hint    = "Use @[CaseNumber.first.Number] or @[CourtNum.first.Number]"
+notes       = "§35"
+
+
+[[lint_rule]]
+id          = "no_vicwitoff_name_fields"
+description = "VicWitOff is not a standard Pine entity in OBA — use Complainant"
+match_regex = "@\\[VicWitOff\\.first\\.(?:NameFirstName|NameLastName)\\]"
+severity    = "error"
+fix_hint    = "Translate JDA VicWitOff → Pine Complainant before emitting"
+notes       = "§35; §30 entity translation"
+
+
+[[lint_rule]]
+id          = "no_caseassignment_personnel_name_fields"
+description = "Prosecutor / DefAtty / Defense are CaseAssignment vars — use FormatName(...) directly"
+match_regex = "@\\[(?:Prosecutor|DefAtty|Defense)\\.first\\.(?:PersonnelFirstName|PersonnelLastName|NameLastName)\\]"
+severity    = "error"
+fix_hint    = "Use @[<Entity>.first.FormatName(F L)] (or appropriate format) instead"
+notes       = "§35 — CaseAssignment doesn't expose Personnel*Name fields directly"
+
+
+[[lint_rule]]
+id          = "no_defendant_in_oba_context"
+description = "Use @[Respondent.*] in OBA templates; @[Defendant.*] is the criminal/PD form"
+match_regex = "@\\[Defendant\\.first\\.(?:NameFirstName|NameLastName)\\]"
+severity    = "warning"
+fix_hint    = "If the source org is OBA, translate Defendant → Respondent"
+notes       = "§35; only fires as warning because criminal/PD templates legitimately use Defendant"
+
+
+[[lint_rule]]
+id          = "no_legacy_brackets_in_pine"
+description = "Generated Pine output must never contain %[...] (legacy JDA syntax)"
+match_regex = "%\\["
+severity    = "error"
+fix_hint    = "Re-run the conversion; the replacement step skipped a token"
+notes       = "Phase 1 / Phase 5 invariant — Pine output is @[...] only"
+
+
+[[lint_rule]]
+id          = "no_jinja_braces"
+description = "Pine output must not contain Jinja-style {{...}} or {%...%}"
+match_regex = "\\{\\{|\\}\\}|\\{%|%\\}"
+severity    = "error"
+fix_hint    = "The LLM may have hallucinated Jinja syntax; re-prompt with constrained output"
+notes       = "Defensive — observed in v1 LLM outputs"
+
+
+[[lint_rule]]
+id          = "no_legacy_entity_prefix_in_pine"
+description = "Pine output must not contain JDA entity prefixes (JW_, KF_, kf_, Cust_, JD_, OCA_)"
+match_regex = "@\\[(?:JW_|KF_|kf_|Cust_|JD_|OCA_)"
+severity    = "error"
+fix_hint    = "Translate the JDA entity name to its Pine equivalent before emitting"
+notes       = "§30 entity translation"

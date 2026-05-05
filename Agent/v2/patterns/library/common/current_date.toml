@@ -1,0 +1,27 @@
+# FormatDate over CurrentDate() → builtin.today.FormatDate(<preset>).
+#
+# Source: pine_syntax_ground_truth.txt §3 (preset table) and §30
+# ("FormatDate(CurrentDate(), MMMM d, yyyy) → @[builtin.today.FormatDate(preset1)]").
+# The format-string-to-preset translation is performed by the
+# `format_to_preset` transform in transforms.py.
+
+[[pattern]]
+id          = "currentdate_format_to_preset"
+description = "FormatDate(CurrentDate(), <fmt>) → @[builtin.today.FormatDate(<preset>)]"
+provenance  = "hand-written"
+verification = "verified"
+notes       = "§3, §30. Custom formats fall through unchanged via transform."
+org_context = "any"
+priority    = 100
+
+match   = "%[FormatDate(CurrentDate(), $fmt)]"
+rewrite = "@[builtin.today.FormatDate($preset)]"
+
+[pattern.holes.fmt]
+kind        = "format-string"
+description = "the JDA date pattern, e.g. 'MMMM d, yyyy' or 'MM/dd/yyyy'"
+
+[pattern.holes.preset]
+derive_from = "fmt"
+transform   = "format_to_preset"
+description = "Pine preset name (or original format string when no preset matches)"

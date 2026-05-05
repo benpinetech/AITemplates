@@ -1,0 +1,352 @@
+# Pine data model reference — structured form of sections 13–22
+# of pine_syntax_ground_truth.txt.
+#
+# Lists the queryable data sources and the fields available on each
+# kind of record. Used by the validator to confirm references are
+# real and by the future miner to generalize patterns.
+
+# ─── data sources (§15) ────────────────────────────────────────────────────
+# Each entry corresponds to one queryable object type. ``typical_query``
+# shows the canonical CreateVar idiom for that source.
+
+[[data_source]]
+name = "Case"
+description = "Case record"
+typical_query = "@[CreateVar(@myCase, @Case.GetByID(@[builtin.CaseID]))]"
+
+[[data_source]]
+name = "CaseInvolvement"
+description = "Parties involved in the case (defendants, victims, etc.)"
+typical_query = '@[CreateVar(@Defendant, @CaseInvolvement.GetByQuery("CaseID":@[builtin.CaseID],"Type":"DEF","IsActive":true))]'
+
+[[data_source]]
+name = "CaseAssignment"
+description = "Personnel assigned to the case (attorneys, judges, officers)"
+typical_query = '@[CreateVar(@Prosecutor, @CaseAssignment.GetByQuery("CaseID":@[builtin.CaseID],"Type":"PROS","IsActive":true))]'
+
+[[data_source]]
+name = "CaseAgency"
+description = "Agency / case numbers (court numbers, DA numbers, etc.)"
+typical_query = '@[CreateVar(@ProsNum, @CaseAgency.GetByQuery("CaseID":@[builtin.CaseID],"NumberType":"PRO"))]'
+
+[[data_source]]
+name = "CaseCharge"
+description = "Charges on the case"
+typical_query = '@[CreateVar(@Charges, @CaseCharge.GetByQuery("CaseID":@[builtin.CaseID]))]'
+
+[[data_source]]
+name = "CasePleaAgreement"
+description = "Plea terms, durations, conditions, fees"
+
+[[data_source]]
+name = "CaseSentence"
+description = "Sentencing record"
+
+[[data_source]]
+name = "CaseFee"
+description = "Fee records"
+
+[[data_source]]
+name = "Event"
+description = "Court events / hearings"
+
+[[data_source]]
+name = "EventAssignment"
+description = "Personnel assigned to a specific event"
+
+[[data_source]]
+name = "EventInvolvement"
+description = "Parties involved in a specific event"
+
+[[data_source]]
+name = "Name"
+description = "Name / person demographic record (gender, DOB, prefix, …)"
+typical_query = "@[CreateVar(@DefName, @Name.GetByID(@[Defendant.first.NameID]))]"
+
+[[data_source]]
+name = "NameAddress"
+description = "Addresses for a Name record"
+
+[[data_source]]
+name = "NamePhone"
+description = "Phone numbers for a Name record"
+
+[[data_source]]
+name = "NameEmail"
+description = "Email addresses for a Name record"
+
+[[data_source]]
+name = "NameNumber"
+description = "ID numbers (SSN, DL, DOC) for a Name record"
+
+[[data_source]]
+name = "Personnel"
+description = "Personnel record (staff, attorneys)"
+
+[[data_source]]
+name = "PersonnelAddress"
+description = "Addresses for a Personnel record"
+
+[[data_source]]
+name = "PersonnelPhone"
+description = "Phone numbers for a Personnel record"
+
+[[data_source]]
+name = "PersonnelEmail"
+description = "Email addresses for a Personnel record"
+
+[[data_source]]
+name = "PersonnelNumber"
+description = "ID numbers for a Personnel record"
+
+[[data_source]]
+name = "PersonnelElement"
+description = "Personnel attributes (bar number, division, title)"
+
+[[data_source]]
+name = "SystemUser"
+description = "System login user record"
+
+[[data_source]]
+name = "SystemAgency"
+description = "Agency / court entity"
+
+[[data_source]]
+name = "SystemAgencyAddress"
+description = "Address for a system agency"
+
+[[data_source]]
+name = "SystemStatute"
+description = "Statute / rule definition record (charge rule metadata)"
+
+
+# ─── common GetByQuery parameters (§14) ────────────────────────────────────
+[[query_param]]
+key = "CaseID"
+description = "Bind to @[builtin.CaseID]"
+example = '"CaseID":@[builtin.CaseID]'
+
+[[query_param]]
+key = "Type"
+description = "Filter by record type code (single or array)"
+example = '''"Type":"DEF"  ·  "Type":"[DEF,CO]"  ·  "Type":['TC001','TC002']'''
+
+[[query_param]]
+key = "IsActive"
+description = "Filter to active records only"
+example = '"IsActive":true'
+
+[[query_param]]
+key = "IsPrimary"
+description = "Filter to the primary record"
+example = '"IsPrimary":true'
+
+[[query_param]]
+key = "IsLead"
+description = "Filter to the lead agency / number"
+example = '"IsLead":true'
+
+[[query_param]]
+key = "NumberType"
+description = "Filter CaseAgency by number-type code"
+example = '"NumberType":"PRO"   ·   "NumberType":"CRT"   ·   "NumberType":"SSN"'
+
+[[query_param]]
+key = "Status"
+description = "Filter by status code (records or events)"
+example = '"Status":"P"  (pending events)'
+
+[[query_param]]
+key = "OrderBy"
+description = "Order results by a field"
+example = '"OrderBy":"StartDate"   with   "OrderAscending":true|false'
+
+[[query_param]]
+key = "NameID"
+description = "Bind to a CaseInvolvement’s NameID for Name lookups"
+example = '"NameID":@[Defendant.first.NameID]'
+
+[[query_param]]
+key = "PersonnelID"
+description = "Bind to a CaseAssignment’s PersonnelID for Personnel lookups"
+example = '"PersonnelID":@[Assign.PersonnelID]'
+
+[[query_param]]
+key = "EventID"
+description = "Bind to an Event’s EventID for assignment / involvement lookups"
+example = '"EventID":@[SubEvent.EventID]'
+
+[[query_param]]
+key = "CaseChargeID"
+description = "Bind to a CaseCharge’s CaseChargeID for plea / language lookups"
+example = '"CaseChargeID":@[charge.CaseChargeID]'
+
+[[query_param]]
+key = "StartDateGreaterThan"
+description = "Future-event filter; commonly bound to @[builtin.Today]"
+example = '"StartDateGreaterThan":@[builtin.Today]'
+
+
+# ─── field references per record type (§16–§22) ───────────────────────────
+# Each field_set lists fields available on one kind of record.
+# Patterns/validators query "is field X valid on record-type Y?"
+
+[[field_set]]
+record_type = "CaseInvolvement"
+fields = [
+  "NameFirstName",
+  "NameLastName",
+  "NameID",
+  "FormatName",
+  "CaseInvolvementID",
+  "DateOfBirth",
+]
+
+[[field_set]]
+record_type = "Name"
+notes = "Loaded via @Name.GetByID(@[X.NameID]). Gender uses raw 'M'/'F' codes."
+fields = [
+  "Gender",
+  "DateOfBirth",
+  "HairColor",
+  "EyeColor",
+  "Race",
+  "Height",
+  "Weight",
+  "NameID",
+  "Type",
+  "Prefix",
+]
+
+[[field_set]]
+record_type = "Personnel"
+fields = [
+  "PersonnelFirstName",
+  "PersonnelLastName",
+  "PersonnelID",
+  "FormatName",
+  "Title",
+  "Gender",
+  "Prefix",
+  "DateOfBirth",
+]
+
+[[field_set]]
+record_type = "Case"
+fields = [
+  "Type",
+  "Subtype",
+  "DateReceived",
+  "Status",
+]
+
+[[field_set]]
+record_type = "CaseAssignment"
+notes = "Use PersonnelID + Personnel record for name access; FormatName works directly too."
+fields = [
+  "PersonnelID",
+  "Type",
+  "SystemAgencyName",
+  "CaseAssignmentID",
+  "FormatName",
+]
+
+[[field_set]]
+record_type = "NameAddress | PersonnelAddress"
+notes = "OBA convention drops SetCasing(Title) on these — see lint_rules and oba.toml."
+fields = [
+  "StreetAddress",
+  "City",
+  "State",
+  "Zip",
+  "Type",
+  "NameAddressID",
+  "Any",
+]
+
+[[field_set]]
+record_type = "NamePhone | PersonnelPhone"
+fields = [
+  "PhoneNumber",
+  "NamePhoneID",
+  "PersonnelPhoneID",
+  "Type",
+]
+
+[[field_set]]
+record_type = "NameEmail | PersonnelEmail"
+fields = [
+  "EmailAddress",
+]
+
+[[field_set]]
+record_type = "CaseAgency"
+notes = "ProsNum.Number must NOT take SetCasing — see lint rule no_setcasing_on_prosnum."
+fields = [
+  "Number",
+  "SystemAgencyID",
+  "SystemAgencyName",
+  "CaseAgencyID",
+  "Status",
+]
+
+[[field_set]]
+record_type = "SystemAgency"
+fields = [
+  "Code",
+  "SystemAgencyID",
+  "SystemAgencyName",
+]
+
+[[field_set]]
+record_type = "CaseCharge"
+fields = [
+  "CaseChargeID",
+  "CountNumber",
+  "SystemStatuteCode",
+  "SystemStatuteOffense",
+  "Severity",
+  "Class",
+  "Stage",
+  "Occurred",
+  "OccurredEnd",
+  "LocationDescription",
+  "Decision",
+  "IsPrimary",
+]
+
+[[field_set]]
+record_type = "Event"
+fields = [
+  "EventID",
+  "Type",
+  "StartDate",
+  "LocationDescription",
+  "Status",
+]
+
+[[field_set]]
+record_type = "CasePleaAgreement"
+fields = [
+  "CasePleaAgreementID",
+  "Agreement",
+  "Note",
+  "Type",
+]
+
+[[field_set]]
+record_type = "SystemStatute"
+fields = [
+  "Group",
+  "SystemStatuteOffense",
+  "SystemStatuteID",
+]
+
+[[field_set]]
+record_type = "PersonnelElement"
+notes = "Used for bar numbers, division, title metadata."
+fields = [
+  "Number",
+  "Description",
+  "Subtype",
+]

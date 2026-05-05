@@ -1,0 +1,46 @@
+# OBA full-name patterns — TitleCase / UpperCase wrappers on .FullName.
+#
+# Source: pine_syntax_ground_truth.txt §30 (FullName mapping rules) and
+# §33 (OBA FormatName patterns with SetCasing). The bare .FullName
+# (no wrapper) form splits into two Pine tokens and is in oba/lastname.toml
+# alongside other split-token forms; we keep this file focused on the
+# wrapped variants.
+
+[[pattern]]
+id          = "oba_fullname_titlecase"
+description = "TitleCase(X.FullName) → X.first.FormatName(F L).SetCasing(Title)"
+provenance  = "hand-written"
+verification = "verified"
+notes       = "§30, §33 — standard OBA letter form for combined name display."
+org_context = "oba"
+priority    = 100
+
+match   = "%[TitleCase($entity.FullName)]"
+rewrite = "@[$entity_pine.first.FormatName(F L).SetCasing(Title)]"
+
+[pattern.holes.entity]
+kind = "path-segment"
+
+[pattern.holes.entity_pine]
+derive_from = "entity"
+transform   = "translate_jda_entity_to_pine"
+
+
+[[pattern]]
+id          = "oba_fullname_uppercase"
+description = "UpperCase(X.FullName) → X.first.FormatName(F L).SetCasing(Upper)"
+provenance  = "hand-written"
+verification = "verified"
+notes       = "§30."
+org_context = "oba"
+priority    = 100
+
+match   = "%[UpperCase($entity.FullName)]"
+rewrite = "@[$entity_pine.first.FormatName(F L).SetCasing(Upper)]"
+
+[pattern.holes.entity]
+kind = "path-segment"
+
+[pattern.holes.entity_pine]
+derive_from = "entity"
+transform   = "translate_jda_entity_to_pine"

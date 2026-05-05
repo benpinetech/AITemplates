@@ -1,0 +1,31 @@
+# JDA prompt variables — recognised by the X.X pattern (both segments
+# of the dotted path are identical). Pine renders these as a clean
+# camelCased identifier.
+#
+# Source: §30 "Prompt variable mapping". The transform raises
+# UnknownTransformInputError when the name isn't in the known
+# table, which the engine treats as "this pattern doesn't apply for
+# this particular input" — letting the candidate fall through to LLM
+# fallback in Phase 4. So a bare X.X path with an unknown name is NOT
+# silently turned into a guessed prompt variable.
+
+[[pattern]]
+id          = "prompt_variable_self_dotted"
+description = "%[Name.Name] (both segments equal) → @[CleanedCamelCaseName]"
+provenance  = "hand-written"
+verification = "verified"
+notes       = "§30. Match-time hole-binding consistency forces both segments equal; transform gates on the known table."
+org_context = "any"
+priority    = 50   # lower than entity-specific patterns
+
+match   = "%[$name.$name]"
+rewrite = "@[$pine_name]"
+
+[pattern.holes.name]
+kind        = "path-segment"
+description = "the repeated segment name, e.g. 'DateofLetter'"
+
+[pattern.holes.pine_name]
+derive_from = "name"
+transform   = "prompt_variable_camel_case"
+description = "the Pine prompt-variable name (raises if unknown)"

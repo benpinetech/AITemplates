@@ -1,0 +1,49 @@
+# OBA address block — fixed 4-token chunk.
+#
+# JDA (TitleCase wrapping street + city, plain state + zip):
+#   %[TitleCase(<X>.Address)]
+#   %[TitleCase(<X>.City)]
+#   %[<X>.StateCode]
+#   %[<X>.Zip]
+#
+# OBA Pine — drops the SetCasing per §17 ("In most OBA/bar templates,
+# address fields do NOT use .SetCasing(Title) even when the legacy
+# template wraps a field in TitleCase()"). The four address tokens
+# also rename their fields per §30 (.Address → .StreetAddress,
+# .StateCode → .State).
+#
+# Hole consistency: the same $entity hole is referenced by all four
+# match elements, so the chunk only fires when the four source tokens
+# all reference the SAME JDA address entity (e.g. JW_Respondent_RosterAddress).
+
+[[pattern]]
+id          = "oba_address_block_titlecase"
+description = "TitleCase(X.Address)/TitleCase(X.City)/X.StateCode/X.Zip → 4 plain Pine address tokens"
+provenance  = "hand-written"
+verification = "verified"
+notes       = "§17, §30. OBA convention drops SetCasing on address fields."
+org_context = "oba"
+priority    = 200
+
+match = [
+  "%[TitleCase($entity.Address)]",
+  "%[TitleCase($entity.City)]",
+  "%[$entity.StateCode]",
+  "%[$entity.Zip]",
+]
+
+rewrite = [
+  "@[$entity_pine.first.StreetAddress]",
+  "@[$entity_pine.first.City]",
+  "@[$entity_pine.first.State]",
+  "@[$entity_pine.first.Zip]",
+]
+
+[pattern.holes.entity]
+kind        = "path-segment"
+description = "JDA address entity (e.g. JW_Respondent_RosterAddress)"
+
+[pattern.holes.entity_pine]
+derive_from = "entity"
+transform   = "translate_jda_entity_to_pine"
+description = "Pine address entity (e.g. RespondentAddress)"

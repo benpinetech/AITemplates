@@ -1,0 +1,136 @@
+# Pine language grammar reference — structured form of sections 1–12
+# of pine_syntax_ground_truth.txt.
+#
+# This file is a *reference* — the parser produces ASTs without consulting
+# it, but the validator and pattern engine query it for "is this a valid
+# preset / format token / control keyword?" decisions.
+
+# ─── tokens ────────────────────────────────────────────────────────────────
+[token_format]
+opener = "@["
+closer = "]"
+
+
+# ─── builtin variables (§2) ────────────────────────────────────────────────
+[builtins]
+# Always-available variables that don't need a CreateVar declaration.
+# Casing of "today" / "Today" is flexible per the source notes.
+case_id = "@[builtin.CaseID]"
+current_user_personnel_id = "@[builtin.CurrentUserPersonnelID]"
+current_user_user_id = "@[builtin.CurrentUserUserID]"
+today = "@[builtin.Today]"
+
+
+# ─── date format presets (§3) ──────────────────────────────────────────────
+# Authoritative preset table. The pattern transform `format_to_preset`
+# (in patterns/transforms.py) uses this same data — keep them in sync.
+[date_presets.preset1]
+format = "MMMM d, yyyy"
+example = "April 13, 2026"
+
+[date_presets.preset2]
+format = "{d} day of {MMMM}, {yyyy}"
+example = "13th day of April, 2026"
+notes = "ordinal day"
+
+[date_presets.preset3]
+format = "MMMM, yyyy"
+example = "April, 2026"
+
+[date_presets.preset4]
+format = "M/d/yyyy"
+example = "4/13/2026"
+notes = "single-digit month/day"
+
+[date_presets.preset5]
+format = "MM/dd/yyyy"
+example = "04/13/2026"
+notes = "zero-padded month/day"
+
+[date_presets.preset6]
+format = "M/dd/yyyy"
+example = "4/13/2026"
+notes = "single-digit month, padded day"
+
+
+# ─── selectors (§4) ────────────────────────────────────────────────────────
+[selectors]
+# Property and method forms are interchangeable per §29.
+forms = [".first", ".last", ".first()", ".Last()", ".Any()", ".IsLast"]
+
+
+# ─── FormatName format tokens (§5) ─────────────────────────────────────────
+[format_tokens]
+F = "First name"
+M = "Middle name"
+L = "Last name"
+P = "Prefix (e.g. 'Mr.', 'Hon.')"
+S = "Suffix (e.g. 'Jr.', 'III')"
+I = "Initial (first letter)"
+IL = "first + last initials"
+FILI = "First name + initials of remaining names (common for attorneys)"
+
+
+# ─── SetCasing (§6) ────────────────────────────────────────────────────────
+[setcasing]
+# Valid args to SetCasing(...). Anything else is a lint failure.
+allowed_args = ["Upper", "Lower", "Title", "Sentence"]
+
+
+# ─── GetLabel table identifiers (§7) ──────────────────────────────────────
+# Both numeric and named-string forms are accepted by Pine. We list the
+# observed names; the validator should accept either form. For brevity,
+# only the most-used names are tabulated here — extend as patterns surface
+# new ones.
+[getlabel.named_to_numeric]
+CaseAssignmentType = 6
+CaseChargeStage = 12
+EventType = 27
+CaseInvolvementType = 48
+CasePleaType = 59
+NameEyeColor = 97
+NameGender = 98
+NameHairColor = 99
+NameRace = 101
+PersonnelElementSubtype = 121
+NamePrefix = 130
+SystemStatuteClass = 160
+SystemStatuteSeverity = 217
+
+
+# ─── control keywords (§10–§12) ────────────────────────────────────────────
+# Canonical names. Pine's lexer is case-insensitive; the unparser emits
+# these casings.
+[control_keywords]
+canonical = [
+  "If",
+  "ElseIf",
+  "Else",
+  "EndIf",
+  "Foreach",
+  "EndForEach",
+  "Cca",
+  "EndCca",
+  "Lb",
+  "EndLb",
+]
+
+
+# ─── operators (§10) ───────────────────────────────────────────────────────
+[operators]
+# Both '==' and '=' are accepted as equality. '==' is preferred for
+# string comparisons.
+equality = ["==", "="]
+comparison = ["!=", "<", "<=", ">", ">="]
+logical = ["&&", "||"]
+membership = ["IN"]
+
+
+# ─── built-in functions (§9b–§9d) ──────────────────────────────────────────
+# Standalone functions (not method calls). Patterns/validator may need
+# to know these are "global".
+[builtin_functions]
+GetAge = "@[GetAge(@[dateOfBirth], @[referenceDate])]"
+GetDateDiff = '@[GetDateDiff(@[startDate], @[endDate], "Day|Year|Month|Hour|Minute")]'
+FormatPhoneNumber = "@[field.PhoneNumber.FormatPhoneNumber()]"
+FormatNumber = "@[field.FormatNumber(###-##-####)]"

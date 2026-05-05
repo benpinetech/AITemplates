@@ -1,0 +1,54 @@
+# OBA gender pronoun block — fixed 4-token chunk.
+#
+# JDA: %[If(<X>.Gender=M)] he/his/Mr./etc. %[ElseIf(<X>.Gender=F)] she/her/Ms./etc.
+#      %[Else] he/she etc. %[EndIf]
+#
+# The bodies (he/she/he-or-she) are LITERAL TEXT in the RTF, between
+# the JDA tokens. They are not part of any token; the chunk matcher
+# only sees tokens. Phase 5's RTF replacement preserves the prose
+# between matched tokens, so emitting the structurally-equivalent
+# Pine If/ElseIf/Else/EndIf chain is sufficient — the prose stays
+# where it is.
+#
+# Source: pine_syntax_ground_truth.txt §10 (gender pronoun block
+# example) and §32 (OBA RespondentInfo / ComplainantInfo gender
+# patterns). The Pine output uses ``<Entity>Info.Gender`` because OBA
+# templates load a Name record alongside each involvement record.
+#
+# Limitation: this pattern emits the conditional chain assuming the
+# corresponding ``CreateVar(@<Entity>Info, ...)`` declaration exists
+# elsewhere in the template. Generating the CreateVar is a Phase 5
+# pipeline concern (template-level prelude generation), not a per-chunk
+# pattern concern.
+
+[[pattern]]
+id          = "oba_gender_pronoun_block"
+description = "If/ElseIf/Else/EndIf over <X>.Gender → OBA Pine equivalent against <X>Info.Gender"
+provenance  = "hand-written"
+verification = "verified"
+notes       = "§10, §32. Bodies (he/she/etc.) are RTF prose, preserved by the pipeline."
+org_context = "oba"
+priority    = 200
+
+match = [
+  "%[If($entity.Gender=M)]",
+  "%[ElseIf($entity.Gender=F)]",
+  "%[Else]",
+  "%[EndIf]",
+]
+
+rewrite = [
+  "@[If('@[$info_var.Gender]' == 'M')]",
+  "@[ElseIf('@[$info_var.Gender]' == 'F')]",
+  "@[Else]",
+  "@[EndIf]",
+]
+
+[pattern.holes.entity]
+kind        = "path-segment"
+description = "JDA entity (e.g. JW_Defendant, Cust_Complainant)"
+
+[pattern.holes.info_var]
+derive_from = "entity"
+transform   = "jda_entity_to_pine_info_var"
+description = "Pine info-var Name record (e.g. RespondentInfo, ComplainantInfo)"

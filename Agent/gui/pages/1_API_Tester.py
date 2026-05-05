@@ -11,8 +11,12 @@ GUI_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(GUI_DIR))
 from rtf_render import init_renderer, render_rtf, highlight_pine, highlight_legacy
 
-st.set_page_config(page_title="API Tester", layout="wide")
+st.set_page_config(page_title="API Tester (v1)", layout="wide")
 st.title("API Tester")
+st.caption(
+    "v1 — sends requests to the v1 FastAPI server. "
+    "For the chunk-based pipeline, see the **v2 Pipeline** page."
+)
 
 # ── init RTF renderer once per session ──────────────────────────────────────
 if "renderer_checked" not in st.session_state:

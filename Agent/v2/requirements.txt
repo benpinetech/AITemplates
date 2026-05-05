@@ -1,0 +1,4 @@
+# Agent v2 additional dependencies (on top of repo-root requirements.txt).
+# Install with: ./venv/bin/pip install -r Agent/v2/requirements.txt
+
+pytest        # test runner; v2 has its own pytest suite under tests/

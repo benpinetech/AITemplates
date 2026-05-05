@@ -1,0 +1,30 @@
+# Patterns for the prosecution case number (ProsNum / CaseAgency).
+#
+# Source: pine_syntax_ground_truth.txt §30 ("JDA / legacy variable
+# mapping guide" → Case details mapping) and §35 (anti-pattern: do not
+# add SetCasing to ProsNum.Number).
+
+[[pattern]]
+id          = "prosnum_uppercase"
+description = "UpperCase(JW_CaseDetails.ProsNum) → @[ProsNum.first.Number] (no SetCasing — anti-pattern)"
+provenance  = "hand-written"
+verification = "verified"
+notes       = "§30 Case details mapping; §35 anti-hallucination forbids SetCasing on ProsNum.Number."
+org_context = "any"
+priority    = 110   # higher than the bare form so it wins when both could match
+
+match   = "%[UpperCase(JW_CaseDetails.ProsNum)]"
+rewrite = "@[ProsNum.first.Number]"
+
+
+[[pattern]]
+id          = "prosnum_bare"
+description = "JW_CaseDetails.ProsNum → @[ProsNum.first.Number]"
+provenance  = "hand-written"
+verification = "verified"
+notes       = "§30 Case details mapping."
+org_context = "any"
+priority    = 100
+
+match   = "%[JW_CaseDetails.ProsNum]"
+rewrite = "@[ProsNum.first.Number]"

@@ -1,0 +1,73 @@
+# Initials(X.FullName, false) → X.first.FormatName(FILI)
+#
+# Two variants: bare Initials and LowerCase(Initials(...)). Section 30
+# of pine_syntax_ground_truth.txt says LowerCase wrapping is dropped in
+# the Pine equivalent — FormatName(FILI) carries no SetCasing.
+#
+# Current-user case is handled by separate higher-priority patterns
+# below because cu has no `.first` selector (see §25, §30).
+
+[[pattern]]
+id          = "initials_currentuser_lowercase"
+description = "LowerCase(Initials(JW_CurrentUser.FullName, false)) → @[cu.FormatName(FILI)] (no .first, no SetCasing)"
+provenance  = "hand-written"
+verification = "verified"
+notes       = "§25, §30. cu is a singular shorthand — does not take .first."
+org_context = "any"
+priority    = 130
+
+match   = "%[LowerCase(Initials(JW_CurrentUser.FullName, false))]"
+rewrite = "@[cu.FormatName(FILI)]"
+
+
+[[pattern]]
+id          = "initials_currentuser_bare"
+description = "Initials(JW_CurrentUser.FullName, false) → @[cu.FormatName(FILI)]"
+provenance  = "hand-written"
+verification = "verified"
+notes       = "§25, §30."
+org_context = "any"
+priority    = 130
+
+match   = "%[Initials(JW_CurrentUser.FullName, false)]"
+rewrite = "@[cu.FormatName(FILI)]"
+
+
+[[pattern]]
+id          = "initials_lowercase_general"
+description = "LowerCase(Initials(X.FullName, false)) → X.first.FormatName(FILI)"
+provenance  = "hand-written"
+verification = "verified"
+notes       = "§30 — LowerCase wrapping is dropped in Pine; SetCasing not needed."
+org_context = "any"
+priority    = 100
+
+match   = "%[LowerCase(Initials($entity.FullName, false))]"
+rewrite = "@[$entity_pine.first.FormatName(FILI)]"
+
+[pattern.holes.entity]
+kind = "path-segment"
+
+[pattern.holes.entity_pine]
+derive_from = "entity"
+transform   = "translate_jda_entity_to_pine"
+
+
+[[pattern]]
+id          = "initials_bare_general"
+description = "Initials(X.FullName, false) → X.first.FormatName(FILI)"
+provenance  = "hand-written"
+verification = "verified"
+notes       = "§30."
+org_context = "any"
+priority    = 100
+
+match   = "%[Initials($entity.FullName, false)]"
+rewrite = "@[$entity_pine.first.FormatName(FILI)]"
+
+[pattern.holes.entity]
+kind = "path-segment"
+
+[pattern.holes.entity_pine]
+derive_from = "entity"
+transform   = "translate_jda_entity_to_pine"

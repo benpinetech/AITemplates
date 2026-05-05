@@ -19,8 +19,12 @@ TEMPLATE_OUTPUT_DIR = AGENT_DIR / "template_output"
 sys.path.insert(0, str(GUI_DIR))
 from rtf_render import init_renderer, render_rtf, highlight_pine, highlight_legacy
 
-st.set_page_config(page_title="Template Runner", layout="wide")
+st.set_page_config(page_title="Template Runner (v1)", layout="wide")
 st.title("Template Runner")
+st.caption(
+    "v1 — runs the original `Agent/src/main.py` agent on a single RTF. "
+    "For the chunk-based pipeline, see the **v2 Pipeline** page."
+)
 
 # ── handle pending stop request ───────────────────────────────────────────────
 if st.session_state.get("runner_stop_requested") and st.session_state.get("runner_proc_pid"):

@@ -50,7 +50,19 @@ Desktop.ini
 # macOS
 .DS_Store
 
+# Secrets — never commit any of these
 .env
+.env.*
+*.pem
+*.key
+*.p12
+secrets.toml
+secrets.json
+.openai_key
+.anthropic_key
+# keyring fallback storage (keyrings.alt writes here when no native backend is available)
+keyringrc.cfg
+python_keyring/
 
 venv/
 

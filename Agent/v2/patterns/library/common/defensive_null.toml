@@ -1,0 +1,49 @@
+# Defensive null wrapper collapse — chunk pattern with sequence holes.
+#
+# JDA: %[If(X.IsEmpty=true)] <empty body...> %[Else] <has-X body...> %[EndIf]
+# Pine: just the recursively-converted form of the has-X body.
+#
+# Pine handles missing values without an explicit If/IsEmpty guard, so
+# the entire conditional collapses to the kept-branch body. The matcher
+# captures both bodies as token-sequence holes (zero or more tokens
+# each); the rewriter recurses into the single-token engine for every
+# token in the kept body.
+#
+# Source: pine_syntax_ground_truth.txt §30 ("Defensive null wrapper
+# collapse: If(X.IsEmpty=true)/Else X/EndIf → X_pine").
+#
+# Assumption: the input has NOT been pre-swapped (i.e. the has-X branch
+# is the Else branch, matching v1's input convention before the
+# branch-swap pass). A pre-swap module is on the v1.5 to-do list.
+
+[[pattern]]
+id          = "defensive_null_wrapper_collapse"
+description = "If(X.IsEmpty=true)/<empty>/Else/<X>/EndIf → just X_pine"
+provenance  = "hand-written"
+verification = "verified"
+notes       = "§30. Sequence holes accept zero-or-more body tokens; rewrite recurses into the engine for each."
+org_context = "any"
+priority    = 200
+
+match = [
+  "%[If($entity.IsEmpty=true)]",
+  "$empty_body...",
+  "%[Else]",
+  "$has_entity_body...",
+  "%[EndIf]",
+]
+
+# Emit the Pine form of every token in the has-entity body, in order.
+rewrite = ["$has_entity_body..."]
+
+[pattern.holes.entity]
+kind        = "path-segment"
+description = "JDA entity name being checked for emptiness"
+
+[pattern.holes.empty_body]
+kind        = "token"
+description = "zero or more tokens in the empty-case body (discarded)"
+
+[pattern.holes.has_entity_body]
+kind        = "token"
+description = "zero or more tokens in the has-entity body; each is recursively converted"
