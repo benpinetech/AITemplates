@@ -149,18 +149,304 @@ class TestPrivacyInvariant:
         b = req.assemble_prompt()
         assert a == b
 
+    def test_prompt_omits_translation_rules_block(self, oba):
+        # The OBA 10-rule block was removed after the H1 prompt-strip
+        # experiment showed it diluted the prompt without F1 benefit.
+        # The universal role enum + vocabulary + few-shot carry the
+        # same info more generally. See LLM_CAPABILITY_FINDINGS.md.
+        token = jda_parser.parse("%[Cust_Complainant.FullName]")
+        req = FallbackRequest(jda_token=token, org="oba", vocabulary=oba.vocabulary)
+        prompt = req.assemble_prompt()
+        assert "TRANSLATION RULES" not in prompt
+        # Role enum still carries the entity vocabulary the rules used to enumerate.
+        assert "INVOLVEMENT TYPES" in prompt or "ASSIGNMENT TYPES" in prompt
+
+    def test_prompt_omits_entity_translation_table(self, oba):
+        # Same rationale as above — the entity translation table was
+        # redundant with the role enum + vocabulary list. Per-input
+        # entity hints (``ENTITY HINT``) still surface known renames
+        # for the specific token being translated.
+        token = jda_parser.parse("%[Cust_Complainant_Address.City]")
+        req = FallbackRequest(jda_token=token, org="oba", vocabulary=oba.vocabulary)
+        prompt = req.assemble_prompt()
+        assert "JDA → PINE ENTITY TRANSLATION TABLE" not in prompt
+        # The per-input hint still resolves the leading entity.
+        assert "ENTITY HINT" in prompt
+        assert "Cust_Complainant_Address" in prompt
+        assert "ComplainantAddress" in prompt
+
+    def test_prompt_includes_entity_hint_when_known(self, oba):
+        # When the input's leading entity is in the table, the prompt
+        # adds a per-call hint pointing the LLM at the right Pine entity.
+        token = jda_parser.parse("%[Cust_RespondentAtty.LastName]")
+        req = FallbackRequest(jda_token=token, org="oba", vocabulary=oba.vocabulary)
+        prompt = req.assemble_prompt()
+        assert "ENTITY HINT" in prompt
+        # The hint pairs the JDA name with its Pine target.
+        hint_section = prompt.split("ENTITY HINT")[1]
+        assert "Cust_RespondentAtty" in hint_section
+        assert "RespondentAtty" in hint_section
+
+    def test_prompt_omits_hint_for_unknown_entity(self, oba):
+        token = jda_parser.parse("%[MysteryEntity.SomeField]")
+        req = FallbackRequest(jda_token=token, org="oba", vocabulary=oba.vocabulary)
+        prompt = req.assemble_prompt()
+        assert "ENTITY HINT" not in prompt
+
+    def test_batch_prompt_lists_inputs_in_order(self, oba):
+        from v2.engine.llm_fallback import BatchFallbackRequest
+        toks = [
+            jda_parser.parse("%[Cust_Complainant.FullName]"),
+            jda_parser.parse("%[Cust_Complainant_Address.City]"),
+            jda_parser.parse("%[TitleCase(JW_Atty_Pros_Active.FullName)]"),
+        ]
+        req = BatchFallbackRequest(
+            jda_tokens=tuple(toks), org="oba", vocabulary=oba.vocabulary,
+        )
+        prompt = req.assemble_batch_prompt()
+        # All three appear in numbered order in the INPUTS section.
+        inputs_section = prompt.split("INPUTS")[1].split("OUTPUTS")[0]
+        assert "1. %[Cust_Complainant.FullName]" in inputs_section
+        assert "2. %[Cust_Complainant_Address.City]" in inputs_section
+        assert "3. %[TitleCase(JW_Atty_Pros_Active.FullName)]" in inputs_section
+        # All three get an entity hint too.
+        hint_section = prompt.split("ENTITY HINT")[1]
+        assert "for input 1" in hint_section
+        assert "for input 2" in hint_section
+        assert "for input 3" in hint_section
+
+    def test_classify_audience_from_filename_to_c(self, oba):
+        from v2.engine.llm_fallback import classify_document_audience
+        from v2.patterns.transforms import _JDA_TO_PINE_ENTITY
+        # Filename signal trumps token frequency
+        assert classify_document_audience(
+            "C Offer PR.rtf", [], _JDA_TO_PINE_ENTITY,
+        ) == "complainant"
+        assert classify_document_audience(
+            "Letter to Complainant.rtf", [], _JDA_TO_PINE_ENTITY,
+        ) == "complainant"
+        assert classify_document_audience(
+            "Process Ltr C.rtf", [], _JDA_TO_PINE_ENTITY,
+        ) == "complainant"
+
+    def test_classify_audience_from_filename_to_r(self, oba):
+        from v2.engine.llm_fallback import classify_document_audience
+        from v2.patterns.transforms import _JDA_TO_PINE_ENTITY
+        assert classify_document_audience(
+            "R Offer PR.rtf", [], _JDA_TO_PINE_ENTITY,
+        ) == "respondent"
+        assert classify_document_audience(
+            "Letter to Respondent.rtf", [], _JDA_TO_PINE_ENTITY,
+        ) == "respondent"
+        assert classify_document_audience(
+            "UPL Process R.rtf", [], _JDA_TO_PINE_ENTITY,
+        ) == "respondent"
+        assert classify_document_audience(
+            "Letter to Disbarred Attorney.rtf", [], _JDA_TO_PINE_ENTITY,
+        ) == "respondent"
+
+    def test_classify_audience_from_token_frequency(self):
+        from v2.engine.llm_fallback import classify_document_audience
+        from v2.patterns.transforms import _JDA_TO_PINE_ENTITY
+        # No filename → fall back to token counts
+        complainant_heavy = [
+            jda_parser.parse("%[Cust_Complainant.FullName]"),
+            jda_parser.parse("%[Cust_Complainant.LastName]"),
+            jda_parser.parse("%[Cust_Complainant_Address.City]"),
+            jda_parser.parse("%[JW_Respondent.MrMs]"),
+        ]
+        assert classify_document_audience(
+            None, complainant_heavy, _JDA_TO_PINE_ENTITY,
+        ) == "complainant"
+
+        respondent_heavy = [
+            jda_parser.parse("%[JW_Respondent.FullName]"),
+            jda_parser.parse("%[JW_Respondent.LastName]"),
+            jda_parser.parse("%[JW_Respondent_RosterAddress.City]"),
+            jda_parser.parse("%[Cust_Complainant.MrMs]"),
+        ]
+        assert classify_document_audience(
+            None, respondent_heavy, _JDA_TO_PINE_ENTITY,
+        ) == "respondent"
+
+    def test_classify_audience_returns_none_when_balanced(self):
+        from v2.engine.llm_fallback import classify_document_audience
+        from v2.patterns.transforms import _JDA_TO_PINE_ENTITY
+        balanced = [
+            jda_parser.parse("%[Cust_Complainant.FullName]"),
+            jda_parser.parse("%[Cust_Complainant.LastName]"),
+            jda_parser.parse("%[JW_Respondent.FullName]"),
+            jda_parser.parse("%[JW_Respondent.LastName]"),
+        ]
+        # 50/50 split — no clear majority
+        assert classify_document_audience(
+            None, balanced, _JDA_TO_PINE_ENTITY,
+        ) is None
+
+    def test_classify_audience_returns_none_for_too_few_tokens(self):
+        from v2.engine.llm_fallback import classify_document_audience
+        from v2.patterns.transforms import _JDA_TO_PINE_ENTITY
+        # Below the min-tokens threshold (3)
+        assert classify_document_audience(
+            None,
+            [jda_parser.parse("%[Cust_Complainant.FullName]"),
+             jda_parser.parse("%[Cust_Complainant.LastName]")],
+            _JDA_TO_PINE_ENTITY,
+        ) is None
+
+    def test_batch_prompt_includes_audience_when_classifiable(self, oba):
+        from v2.engine.llm_fallback import BatchFallbackRequest
+        toks = [jda_parser.parse("%[Cust_Complainant.FullName]")]
+        req = BatchFallbackRequest(
+            jda_tokens=tuple(toks), org="oba", vocabulary=oba.vocabulary,
+            template_name="C Offer PR.rtf",
+        )
+        prompt = req.assemble_batch_prompt()
+        assert "DOCUMENT AUDIENCE" in prompt
+        section = prompt.split("DOCUMENT AUDIENCE")[1].split("DOCUMENT CONTEXT")[0]
+        assert "Complainant" in section
+
+    def test_batch_prompt_omits_audience_when_unclear(self, oba):
+        from v2.engine.llm_fallback import BatchFallbackRequest
+        toks = [jda_parser.parse("%[SomethingObscure.Field]")]
+        req = BatchFallbackRequest(
+            jda_tokens=tuple(toks), org="oba", vocabulary=oba.vocabulary,
+            # No filename and tokens don't classify
+        )
+        prompt = req.assemble_batch_prompt()
+        assert "DOCUMENT AUDIENCE" not in prompt
+
+    def test_batch_prompt_includes_document_context(self, oba):
+        from v2.engine.llm_fallback import BatchFallbackRequest
+        # 3 Complainant tokens, 1 Respondent token → Complainant should
+        # be flagged as the dominant entity in the doc-context section.
+        toks = [
+            jda_parser.parse("%[Cust_Complainant.FullName]"),
+            jda_parser.parse("%[Cust_Complainant.LastName]"),
+            jda_parser.parse("%[Cust_Complainant_Address.City]"),
+            jda_parser.parse("%[JW_Respondent.FullName]"),
+        ]
+        req = BatchFallbackRequest(
+            jda_tokens=tuple(toks), org="oba", vocabulary=oba.vocabulary,
+        )
+        prompt = req.assemble_batch_prompt()
+        assert "DOCUMENT CONTEXT" in prompt
+        ctx_section = prompt.split("DOCUMENT CONTEXT")[1].split("INPUTS")[0]
+        # Complainant appears most (3 times: two direct + one address)
+        # Respondent appears once.
+        assert "Complainant" in ctx_section
+        assert "Respondent" in ctx_section
+        # Counts should be on separate lines
+        complainant_line = next(l for l in ctx_section.splitlines() if "Complainant" in l and "Address" not in l)
+        respondent_line = next(l for l in ctx_section.splitlines() if "Respondent" in l)
+        # Complainant count > Respondent count
+        c_count = int(complainant_line.split('×')[0].strip())
+        r_count = int(respondent_line.split('×')[0].strip())
+        assert c_count > r_count
+
+    def test_batch_response_parsing_simple(self):
+        from v2.engine.llm_fallback import BatchFallbackRequest
+        resp = (
+            "1. @[Complainant.first.NameFirstName] @[Complainant.first.NameLastName]\n"
+            "2. @[ComplainantAddress.first.City]\n"
+            "3. @[Prosecutor.first.FormatName(F L).SetCasing(Title)]\n"
+        )
+        out = BatchFallbackRequest.parse_batch_response(resp, 3)
+        assert len(out) == 3
+        assert [t.unparse() for t in out[0]] == [
+            "@[Complainant.first.NameFirstName]",
+            "@[Complainant.first.NameLastName]",
+        ]
+        assert [t.unparse() for t in out[1]] == ["@[ComplainantAddress.first.City]"]
+        assert [t.unparse() for t in out[2]] == ["@[Prosecutor.first.FormatName(F L).SetCasing(Title)]"]
+
+    def test_batch_response_parsing_no_mapping_slot(self):
+        from v2.engine.llm_fallback import BatchFallbackRequest
+        resp = (
+            "1. @[Respondent.first.NameLastName]\n"
+            "2. <no mapping found>\n"
+            "3. @[Complainant.first.NameLastName]\n"
+        )
+        out = BatchFallbackRequest.parse_batch_response(resp, 3)
+        assert len(out) == 3
+        assert len(out[0]) == 1
+        assert out[1] == []          # no Pine tokens for slot 2
+        assert len(out[2]) == 1
+
+    def test_batch_response_parsing_tolerates_missing_slots(self):
+        from v2.engine.llm_fallback import BatchFallbackRequest
+        # LLM might skip slot 2 entirely.
+        resp = (
+            "1. @[Respondent.first.NameLastName]\n"
+            "3. @[Complainant.first.NameLastName]\n"
+        )
+        out = BatchFallbackRequest.parse_batch_response(resp, 3)
+        assert len(out) == 3
+        assert len(out[0]) == 1
+        assert out[1] == []          # missing slot
+        assert len(out[2]) == 1
+
+    def test_batch_convert_via_mock_client(self, oba):
+        from v2.engine.llm_fallback import LlmFallback, MockLlmClient
+        canned = (
+            "1. @[Complainant.first.NameFirstName] @[Complainant.first.NameLastName]\n"
+            "2. @[ComplainantAddress.first.City]\n"
+        )
+        client = MockLlmClient(lambda prompt: canned)
+        fb = LlmFallback(client=client, library=[], org_overrides=oba)
+        toks = [
+            jda_parser.parse("%[Cust_Complainant.FullName]"),
+            jda_parser.parse("%[Cust_Complainant_Address.City]"),
+        ]
+        out = fb.convert_batch(toks)
+        assert len(out) == 2
+        assert [t.unparse() for t in out[0]] == [
+            "@[Complainant.first.NameFirstName]",
+            "@[Complainant.first.NameLastName]",
+        ]
+        assert [t.unparse() for t in out[1]] == ["@[ComplainantAddress.first.City]"]
+
+    def test_batch_convert_empty_returns_empty(self, oba):
+        from v2.engine.llm_fallback import LlmFallback, MockLlmClient
+        fb = LlmFallback(
+            client=MockLlmClient(lambda p: ""),
+            library=[], org_overrides=oba,
+        )
+        assert fb.convert_batch([]) == []
+
+    def test_constant_prefix_stable_across_inputs(self, oba):
+        # OpenAI's prompt cache keys on the prefix; we want the entire
+        # rules+vocab+entity-table section identical between calls so
+        # the cache hits. Verify by comparing the prefix up to the
+        # variable section (FEWSHOT / HINT / INPUT).
+        a = FallbackRequest(
+            jda_token=jda_parser.parse("%[Cust_Complainant.LastName]"),
+            org="oba",
+            vocabulary=oba.vocabulary,
+        ).assemble_prompt()
+        b = FallbackRequest(
+            jda_token=jda_parser.parse("%[JW_Respondent.FullName]"),
+            org="oba",
+            vocabulary=oba.vocabulary,
+        ).assemble_prompt()
+        # Find a marker that's the LAST constant-section header.
+        marker = "ALLOWED PINE VOCABULARY"
+        a_prefix = a[: a.index(marker) + len(marker)]
+        b_prefix = b[: b.index(marker) + len(marker)]
+        assert a_prefix == b_prefix
+
     def test_prompt_does_not_quote_arbitrary_input(self, oba):
-        # Even if the JDA token contains odd characters, only its
-        # unparsed text appears — not anything outside.
-        token = jda_parser.parse("%[Subdocument(Template\\Letterhead)]")
+        # Even if the JDA token contains odd characters, the input
+        # appears in exactly one place: the INPUT section. (Rule
+        # examples may legitimately mention other paths.)
+        token = jda_parser.parse("%[Subdocument(MysteryPath\\NotInRules)]")
         req = FallbackRequest(
             jda_token=token,
             org="oba",
             vocabulary=oba.vocabulary,
         )
         prompt = req.assemble_prompt()
-        # Backslash path appears exactly once (in the INPUT section).
-        assert prompt.count("Template\\Letterhead") == 1
+        assert prompt.count("MysteryPath\\NotInRules") == 1
 
 
 # ─── response parsing ─────────────────────────────────────────────────────
@@ -210,14 +496,6 @@ class TestFewShotSelection:
         s1 = _similarity("TitleCase(JW_Respondent.FullName)", "TitleCase(X.FullName)")
         s2 = _similarity("TitleCase(JW_Respondent.FullName)", "Subdocument(X)")
         assert s1 > s2
-
-    def test_few_shot_picks_relevant_patterns(self, library):
-        # For a TitleCase(X.FullName) input, the most-similar pattern
-        # should be the OBA fullname titlecase one.
-        target = "%[TitleCase(JW_Respondent.FullName)]"
-        picks = _select_few_shot(library, target, org="oba", k=3)
-        ids = [p.id for p in picks]
-        assert "oba_fullname_titlecase" in ids
 
     def test_few_shot_filters_by_org(self, library):
         # When org="criminal-pd", OBA-only patterns must not appear.

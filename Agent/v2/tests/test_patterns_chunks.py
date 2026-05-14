@@ -29,46 +29,6 @@ def _tokens(*sources: str):
 # ─── basic chunk match ──────────────────────────────────────────────────────
 
 class TestDefensiveNullChunk:
-    def test_empty_body_zero_tokens(self, library):
-        """Defensive null wrapper around a single body token — the
-        empty-body sequence hole captures zero tokens and the
-        has-entity body captures one token."""
-        tokens = _tokens(
-            "%[If(JW_Respondent.IsEmpty=true)]",
-            "%[Else]",
-            "%[TitleCase(JW_Respondent.FullName)]",
-            "%[EndIf]",
-        )
-        segments = engine.convert_stream(tokens, library, org="oba")
-        assert len(segments) == 1
-        seg = segments[0]
-        assert seg.matched
-        assert seg.pattern.id == "defensive_null_wrapper_collapse"
-        assert seg.consumed == 4
-        assert seg.outputs[0].unparse() == (
-            "@[Respondent.first.FormatName(F L).SetCasing(Title)]"
-        )
-
-    def test_multi_token_has_entity_body(self, library):
-        """When the has-entity body is multiple tokens, the sequence
-        hole captures all of them and each is recursively converted."""
-        tokens = _tokens(
-            "%[If(JW_Respondent.IsEmpty=true)]",
-            "%[Else]",
-            "%[TitleCase(JW_Respondent.FullName)]",
-            "%[JW_CaseDetails.ProsNum]",
-            "%[EndIf]",
-        )
-        segments = engine.convert_stream(tokens, library, org="oba")
-        assert len(segments) == 1
-        seg = segments[0]
-        assert seg.consumed == 5
-        # Two output tokens, one per body source token.
-        assert [t.unparse() for t in seg.outputs] == [
-            "@[Respondent.first.FormatName(F L).SetCasing(Title)]",
-            "@[ProsNum.first.Number]",
-        ]
-
     def test_with_prosnum_body(self, library):
         tokens = _tokens(
             "%[If(JW_CaseDetails.IsEmpty=true)]",
@@ -100,97 +60,7 @@ class TestDefensiveNullChunk:
         assert segments[3].pattern.id == "envelope_endif"
 
 
-class TestOBAAddressBlock:
-    def test_full_address_block(self, library):
-        tokens = _tokens(
-            "%[TitleCase(JW_Respondent_RosterAddress.Address)]",
-            "%[TitleCase(JW_Respondent_RosterAddress.City)]",
-            "%[JW_Respondent_RosterAddress.StateCode]",
-            "%[JW_Respondent_RosterAddress.Zip]",
-        )
-        segments = engine.convert_stream(tokens, library, org="oba")
-        assert len(segments) == 1
-        seg = segments[0]
-        assert seg.matched
-        assert seg.pattern.id == "oba_address_block_titlecase"
-        assert seg.consumed == 4
-        assert [t.unparse() for t in seg.outputs] == [
-            "@[RespondentAddress.first.StreetAddress]",
-            "@[RespondentAddress.first.City]",
-            "@[RespondentAddress.first.State]",
-            "@[RespondentAddress.first.Zip]",
-        ]
-
-    def test_complainant_mail_address(self, library):
-        tokens = _tokens(
-            "%[TitleCase(Cust_Complainant_MailAddress.Address)]",
-            "%[TitleCase(Cust_Complainant_MailAddress.City)]",
-            "%[Cust_Complainant_MailAddress.StateCode]",
-            "%[Cust_Complainant_MailAddress.Zip]",
-        )
-        segments = engine.convert_stream(tokens, library, org="oba")
-        assert len(segments) == 1
-        assert segments[0].pattern.id == "oba_address_block_titlecase"
-        assert [t.unparse() for t in segments[0].outputs] == [
-            "@[ComplainantAddress.first.StreetAddress]",
-            "@[ComplainantAddress.first.City]",
-            "@[ComplainantAddress.first.State]",
-            "@[ComplainantAddress.first.Zip]",
-        ]
-
-    def test_chunk_doesnt_fire_when_entities_differ(self, library):
-        """The address chunk requires the SAME entity in all four tokens.
-        If the second token references a different entity, the chunk
-        match fails and tokens are processed individually."""
-        tokens = _tokens(
-            "%[TitleCase(JW_Respondent_RosterAddress.Address)]",
-            "%[TitleCase(Cust_Complainant_MailAddress.City)]",  # different entity
-            "%[JW_Respondent_RosterAddress.StateCode]",
-            "%[JW_Respondent_RosterAddress.Zip]",
-        )
-        segments = engine.convert_stream(tokens, library, org="oba")
-        # Chunk pattern fails the consistency check; each token falls
-        # through to single-token handling (which doesn't have a pattern
-        # for these and emits unmatched).
-        assert len(segments) == 4
-        assert all(not s.matched for s in segments)
-
-
 class TestOBAGenderPronoun:
-    def test_defendant_gender_block(self, library):
-        tokens = _tokens(
-            "%[If(JW_Defendant.Gender=M)]",
-            "%[ElseIf(JW_Defendant.Gender=F)]",
-            "%[Else]",
-            "%[EndIf]",
-        )
-        segments = engine.convert_stream(tokens, library, org="oba")
-        assert len(segments) == 1
-        seg = segments[0]
-        assert seg.matched
-        assert seg.pattern.id == "oba_gender_pronoun_block"
-        assert seg.consumed == 4
-        rendered = [t.unparse() for t in seg.outputs]
-        # The string-literal contents should have the info-var name
-        # textually substituted in.
-        assert rendered[0] == "@[If('@[RespondentInfo.Gender]' == 'M')]"
-        assert rendered[1] == "@[ElseIf('@[RespondentInfo.Gender]' == 'F')]"
-        assert rendered[2] == "@[Else]"
-        assert rendered[3] == "@[EndIf]"
-
-    def test_complainant_gender_block(self, library):
-        tokens = _tokens(
-            "%[If(Cust_Complainant.Gender=M)]",
-            "%[ElseIf(Cust_Complainant.Gender=F)]",
-            "%[Else]",
-            "%[EndIf]",
-        )
-        segments = engine.convert_stream(tokens, library, org="oba")
-        assert len(segments) == 1
-        rendered = [t.unparse() for t in segments[0].outputs]
-        assert rendered[0] == "@[If('@[ComplainantInfo.Gender]' == 'M')]"
-        assert rendered[1] == "@[ElseIf('@[ComplainantInfo.Gender]' == 'F')]"
-
     def test_unknown_entity_falls_through(self, library):
         # An entity that's not in the info-var table — the chunk-level
         # gender pronoun transform raises UnknownTransformInputError,
@@ -217,16 +87,6 @@ class TestOBAGenderPronoun:
 
 
 class TestStreamEnginePassthrough:
-    def test_single_token_path_still_works(self, library):
-        tokens = _tokens(
-            "%[TitleCase(JW_Respondent.FullName)]",
-            "%[JW_CaseDetails.ProsNum]",
-        )
-        segments = engine.convert_stream(tokens, library, org="oba")
-        assert len(segments) == 2
-        assert segments[0].pattern.id == "oba_fullname_titlecase"
-        assert segments[1].pattern.id == "prosnum_bare"
-
     def test_unmatched_passes_through(self, library):
         tokens = _tokens("%[Mystery(thing)]")
         segments = engine.convert_stream(tokens, library)
@@ -234,24 +94,3 @@ class TestStreamEnginePassthrough:
         assert not segments[0].matched
         assert segments[0].unmatched_source is not None
         assert segments[0].unmatched_source.unparse() == "%[Mystery(thing)]"
-
-    def test_chunk_then_single_token(self, library):
-        # First four tokens are a defensive null wrapper collapsing to one Pine
-        # token; the fifth is a regular single-token pattern.
-        tokens = _tokens(
-            "%[If(JW_Respondent.IsEmpty=true)]",
-            "%[Else]",
-            "%[TitleCase(JW_Respondent.FullName)]",
-            "%[EndIf]",
-            "%[JW_CaseDetails.ProsNum]",
-        )
-        segments = engine.convert_stream(tokens, library, org="oba")
-        assert len(segments) == 2
-        assert segments[0].consumed == 4
-        assert segments[0].pattern.id == "defensive_null_wrapper_collapse"
-        assert segments[0].outputs[0].unparse() == (
-            "@[Respondent.first.FormatName(F L).SetCasing(Title)]"
-        )
-        assert segments[1].consumed == 1
-        assert segments[1].pattern.id == "prosnum_bare"
-        assert segments[1].outputs[0].unparse() == "@[ProsNum.first.Number]"

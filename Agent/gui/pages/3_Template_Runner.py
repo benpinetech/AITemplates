@@ -73,7 +73,7 @@ with st.sidebar:
     run_btn = st.button(
         "Run",
         type="primary",
-        use_container_width=True,
+        width="stretch",
         disabled=not legacy_upload or st.session_state.get("runner_running", False),
     )
 
@@ -84,7 +84,7 @@ with st.sidebar:
         st.session_state.runner_generated_content = None
 
     if st.session_state.get("runner_running"):
-        if st.button("Stop", type="secondary", use_container_width=True):
+        if st.button("Stop", type="secondary", width="stretch"):
             st.session_state.runner_stop_requested = True
             st.rerun()
 

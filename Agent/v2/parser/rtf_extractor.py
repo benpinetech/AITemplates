@@ -39,8 +39,19 @@ def _normalize_rtf(rtf: str) -> str:
     """Stitch fragmented %[ openers back together. Returns a string with
     the same length-or-shorter RTF; positions in the returned string are
     what the rest of the extractor uses.
+
+    Public alias: :func:`normalize_rtf`. Callers that intend to use
+    Hit positions for byte-precise editing must run this *first* and
+    then pass the normalized text to both ``extract`` and any
+    downstream reconstruction — otherwise positions drift relative to
+    a non-normalized base string.
     """
     return _FRAGMENTED_OPENER.sub("%", rtf)
+
+
+def normalize_rtf(rtf: str) -> str:
+    """Public alias for the RTF-normalization pre-pass. Idempotent."""
+    return _normalize_rtf(rtf)
 
 
 def _is_hex(c: str) -> bool:

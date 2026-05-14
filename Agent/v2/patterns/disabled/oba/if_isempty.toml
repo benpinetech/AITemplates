@@ -1,0 +1,144 @@
+# OBA If(X.<NameField>.IsEmpty = true) → If(@[Y.Any()] == true)
+#
+# JDA conditions of the form `If(X.FullName.IsEmpty = true)` check
+# whether an entity has a name attached — used in OBA letter
+# templates to choose between addressing the attorney directly vs.
+# addressing the respondent c/o the attorney.
+#
+# The Pine translation flips polarity: `Any() == true` is the LOGICAL
+# OPPOSITE of `IsEmpty == true`. The pipeline pre-pass
+# (`v2.parser.branch_swap`) compensates by swapping the if/else
+# bodies BEFORE these patterns fire, so the semantic mapping ends up
+# correct end-to-end.
+#
+# This file deliberately covers only the two name-bearing fields the
+# corpus actually checks (FullName, LastName). A bare-entity
+# IsEmpty (`X.IsEmpty=true`, two-segment path) is handled separately
+# by `defensive_null_wrapper_collapse` in common/.
+#
+# Source: pine_syntax_ground_truth.txt §17 / §30; v1 prompts.py rule 13.
+
+# ── FullName ──────────────────────────────────────────────────────────────
+
+[[pattern]]
+id          = "oba_if_fullname_isempty_to_any"
+description = "%[If(X.FullName.IsEmpty = true)] → @[If(@[Y.Any()] == true)]"
+provenance  = "hand-written"
+verification = "verified"
+notes       = "Polarity flip — branches are pre-swapped by v2.parser.branch_swap."
+org_context = "oba"
+priority    = 100
+
+match   = "%[If($entity.FullName.IsEmpty = true)]"
+rewrite = "@[If(@[$entity_pine.Any()] == true)]"
+
+[pattern.holes.entity]
+kind = "path-segment"
+
+[pattern.holes.entity_pine]
+derive_from = "entity"
+transform   = "translate_jda_entity_to_pine"
+
+
+[[pattern]]
+id          = "oba_if_fullname_isnullorempty_to_any"
+description = "%[If(X.FullName.IsNullOrEmpty = true)] → @[If(@[Y.Any()] == true)]"
+provenance  = "hand-written"
+verification = "verified"
+org_context = "oba"
+priority    = 100
+
+match   = "%[If($entity.FullName.IsNullOrEmpty = true)]"
+rewrite = "@[If(@[$entity_pine.Any()] == true)]"
+
+[pattern.holes.entity]
+kind = "path-segment"
+
+[pattern.holes.entity_pine]
+derive_from = "entity"
+transform   = "translate_jda_entity_to_pine"
+
+
+# ── LastName ──────────────────────────────────────────────────────────────
+
+[[pattern]]
+id          = "oba_if_lastname_isempty_to_any"
+description = "%[If(X.LastName.IsEmpty = true)] → @[If(@[Y.Any()] == true)]"
+provenance  = "hand-written"
+verification = "verified"
+org_context = "oba"
+priority    = 100
+
+match   = "%[If($entity.LastName.IsEmpty = true)]"
+rewrite = "@[If(@[$entity_pine.Any()] == true)]"
+
+[pattern.holes.entity]
+kind = "path-segment"
+
+[pattern.holes.entity_pine]
+derive_from = "entity"
+transform   = "translate_jda_entity_to_pine"
+
+
+# ── No "= true" clause ────────────────────────────────────────────────────
+# JDA also has bare `If(X.<field>.IsEmpty)` without an explicit comparison.
+# Pine still expects the polarity-flipped Any()==true form. The
+# branch-swap pre-pass handles the bare form too (added in v2.parser
+# .branch_swap), so by the time these patterns fire the bodies are
+# already in the right branches.
+
+[[pattern]]
+id          = "oba_if_fullname_isempty_bare_to_any"
+description = "%[If(X.FullName.IsEmpty)] → @[If(@[Y.Any()] == true)]"
+provenance  = "hand-written"
+verification = "verified"
+org_context = "oba"
+priority    = 100
+
+match   = "%[If($entity.FullName.IsEmpty)]"
+rewrite = "@[If(@[$entity_pine.Any()] == true)]"
+
+[pattern.holes.entity]
+kind = "path-segment"
+
+[pattern.holes.entity_pine]
+derive_from = "entity"
+transform   = "translate_jda_entity_to_pine"
+
+
+[[pattern]]
+id          = "oba_if_fullname_isnullorempty_bare_to_any"
+description = "%[If(X.FullName.IsNullOrEmpty)] → @[If(@[Y.Any()] == true)]"
+provenance  = "hand-written"
+verification = "verified"
+org_context = "oba"
+priority    = 100
+
+match   = "%[If($entity.FullName.IsNullOrEmpty)]"
+rewrite = "@[If(@[$entity_pine.Any()] == true)]"
+
+[pattern.holes.entity]
+kind = "path-segment"
+
+[pattern.holes.entity_pine]
+derive_from = "entity"
+transform   = "translate_jda_entity_to_pine"
+
+
+[[pattern]]
+id          = "oba_if_lastname_isempty_bare_to_any"
+description = "%[If(X.LastName.IsEmpty)] → @[If(@[Y.Any()] == true)]"
+provenance  = "hand-written"
+verification = "verified"
+org_context = "oba"
+priority    = 100
+
+match   = "%[If($entity.LastName.IsEmpty)]"
+rewrite = "@[If(@[$entity_pine.Any()] == true)]"
+
+[pattern.holes.entity]
+kind = "path-segment"
+
+[pattern.holes.entity_pine]
+derive_from = "entity"
+transform   = "translate_jda_entity_to_pine"

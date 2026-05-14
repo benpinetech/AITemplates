@@ -1,132 +1,173 @@
-# Phase 4 — validator, LLM fallback, miner
+# v2 engine
 
-The Phase 2 / 2.5 / 2.6 pattern engine handles the bulk of conversion
-deterministically. Phase 4 adds three things around it:
+The non-pattern halves of the conversion pipeline. The deterministic
+pattern matcher lives in `../patterns/`; this directory holds the
+modules that wrap, augment, and constrain it.
 
-| Module | Role | Status |
-|---|---|---|
-| `validator.py` | Check generated Pine output against lint rules, vocabulary, structural balance | **Done** |
-| `llm_fallback.py` | Convert unmatched chunks via an LLM call, with a constrained prompt (no prose) | **API + mock done; live client adapter wired but unexercised** |
-| `miner.py` | Walk the verified-pair corpus, propose new candidate patterns | **Slice 1: index-aligned single-token mining** |
+| Module | Role |
+|---|---|
+| `audience.py` | Classify the document audience (complainant / respondent / none) from filename and JDA-token frequency. One classifier consumed by both the LLM prompt and the scoped suggestion-store loader so they always agree. |
+| `llm_fallback.py` | LLM batch-convert for tokens the pattern engine doesn't match. Owns prompt assembly, OpenAI client adapter, structured parsing of the response. Privacy invariant: the prompt contains only AST + org vocabulary + few-shot patterns + role-enum + grammar fragment — never prose. |
+| `prelude.py` | Generate the `CreateVar` prelude (parent + child entity declarations) from the Pine tokens the pipeline emitted. Keeps converted templates self-contained so they render against any Pine deployment regardless of variable-screen pre-declarations. |
+| `suggestion_store.py` | Verified-suggestion overlay store: persist a converter-reviewed mapping (1:1, 1:N, N:M, or drop) under a scope (template / audience / global). Loaded by the pipeline at conversion time so an accepted suggestion fires deterministically on the next run. |
+| `validator.py` | Lint Pine output against vocabulary, structural balance (If/EndIf, Foreach/EndForEach, …), and regex lint rules. Pure function; runs after conversion. |
 
-The pattern matcher (`../patterns/engine.py`) is the third leg of
-"Phase 4" in the original spec — it already lives in the patterns
-directory because that's where its data and tests are.
+For the design rationale behind the current prompt shape and the
+suggestion-store scoping model, see
+[`../../LLM_CAPABILITY_FINDINGS.md`](../../LLM_CAPABILITY_FINDINGS.md).
 
 ## Validator
 
 Inputs:
-  - a list of `PineToken` ASTs (typically the outputs of one
-    chunk-aware conversion stream)
-  - a vocabulary allow-list (`OrgRoot.vocabulary` from
-    `../grammar/loaders.py`)
-  - optionally a `LintRules` set (default: load from disk)
+- a list of `PineToken` ASTs (typically the outputs of one
+  chunk-aware conversion stream)
+- a vocabulary allow-list (`OrgRoot.vocabulary` from
+  `../grammar/loaders.py`)
+- optionally a `LintRules` set (default: load from disk)
 
 Output: a list of `ValidationIssue` objects, each with severity,
 rule id, message, and the index of the offending token.
 
-What it checks:
+Checks:
 
 1. **Lint rules.** Every regex in `lint_rules.toml` is run against
    each token's `unparse()` text. `severity = "error"` blocks; `severity
    = "warning"` surfaces.
-2. **Vocabulary.** Every entity-shaped chain base (the `base` of a
-   `PineChain` when it's a string) must appear in
-   `vocabulary.entities`, `vocabulary.builtins` (matched on the head
-   segment), `vocabulary.prompt_variables`, or be a known
-   `cu`-style shorthand. ForEach loop variables introduced by a chain
-   like `Charges.ForEach(c)` are tracked in scope and accepted.
-3. **Structural balance.** `If` / `EndIf`, `Foreach` / `EndForEach`,
-   `Cca` / `EndCca`, `Lb` / `EndLb` — the matcher only sees individual
-   tokens, so we count opens/closes across the stream.
+2. **Vocabulary.** Every chain base must appear in
+   `vocabulary.entities`, `vocabulary.builtins` (head-segment match),
+   `vocabulary.prompt_variables`, or be a `cu`-style shorthand.
+   ForEach-loop variables introduced by `Charges.ForEach(c)` are
+   tracked in scope and accepted.
+3. **Structural balance.** `If`/`EndIf`, `Foreach`/`EndForEach`,
+   `Cca`/`EndCca`, `Lb`/`EndLb`. The matcher only sees individual
+   tokens, so balance is counted across the stream.
 
-Validator is a pure function — same inputs → same outputs. Run it
-after the conversion pipeline; surface the issues to the mapper.
+Pure function — same inputs → same outputs.
 
 ## LLM fallback
 
-The fallback runs only when the pattern engine produces an unmatched
-segment. The prompt sent to the LLM contains only:
+Runs only on tokens the pattern engine leaves unmatched. The prompt
+the model sees is assembled from a small, audited set of inputs:
 
-  - the unmatched JDA AST (its `.unparse()` text)
-  - the org's allowed Pine vocabulary
-  - 3–5 verified-similar (JDA, Pine) examples retrieved from the
-    pattern library (the patterns themselves serve as the few-shot
-    pool — they're hand-verified)
-  - a short grammar fragment relevant to the input
+- the unmatched JDA tokens (their `.unparse()` text)
+- the universal Pine role enum (16 involvement + 42 assignment codes)
+- the org's allowed Pine vocabulary
+- a few-shot subset of the active pattern library (Jaccard-ranked)
+- a grammar fragment (when supplied)
+- per-input entity hints + document-audience hint + sibling-entity
+  counts for disambiguation
 
-**Privacy invariant**: the prompt never contains template prose. The
-`FallbackRequest.assemble_prompt()` method is the chokepoint —
-auditable, unit-testable. A test asserts that the assembled prompt
-contains no characters outside the bracket alphabet plus the bounded
-vocabulary / grammar fragments.
+**Privacy invariant.** Template prose never enters the prompt. The
+constant prefix is the framing header + role enum + vocabulary +
+grammar fragment; the variable suffix is just the few-shot examples,
+the audience hint, the doc-context summary, and the numbered list of
+JDA expressions. A test in `tests/test_engine_llm_fallback.py` audits
+the assembled prompt against this shape.
 
-The module exposes:
+Module shape:
 
 ```python
 class LlmClient(Protocol):
     def complete(self, prompt: str) -> str: ...
 
+class OpenAILlmClient:
+    # Adapter for OpenAI / OpenAI-compatible endpoints (Anyscale,
+    # Together, etc.). Reads OPENAI_API_KEY / OPENAI_MODEL /
+    # OPENAI_BASE_URL by default. Supports tool-call iteration for
+    # search_pine_syntax.
+
 class LlmFallback:
-    def __init__(self, client: LlmClient, library: list[Pattern], vocabulary): ...
-    def convert(self, jda_token: JdaToken, org: str) -> Optional[PineToken]: ...
+    def convert_batch(
+        self,
+        jda_tokens: Sequence[JdaToken],
+        template_name: Optional[str] = None,
+    ) -> List[List[PineToken]]: ...
 ```
 
-The default real client uses the Anthropic SDK (`claude-opus-4-7`).
 For tests, `MockLlmClient` returns canned responses keyed by prompt
-substring, so we can exercise the assembly + parsing path without
-network or API keys.
+substring, so prompt-assembly and response-parsing paths run without
+the network.
 
-## Miner
+### What was tried and removed
 
-Slice 1 (current): walks the verified-pair corpus with simple index
-alignment. For each template where `len(jda_tokens) == len(pine_tokens)`
-and the existing pattern engine cannot already convert all of them,
-the miner proposes a candidate pattern by:
+Several prompt-side experiments were validated, then removed when the
+data showed they didn't pay off. Headline: the OBA-specific 10-rule
+block and the JDA→Pine entity translation table were stripped from
+the prompt (the H1 experiment in `LLM_CAPABILITY_FINDINGS.md`),
+lifting macro F1 by 0.020 and reducing unmatched count by 67% on the
+16-template eval. The role enum + vocabulary + few-shot now carry the
+load.
 
-  1. parsing both sides;
-  2. checking what already converts via the existing engine — those
-     are skipped;
-  3. for the remainder, attempting structural generalization (replace
-     the entity-name segments with `$entity` holes, look for
-     consistent transforms);
-  4. writing each candidate to `../patterns/_candidates/<id>.toml`
-     for human review before promotion to the active library.
+Don't re-propose: longer prompts, more rules, reasoning-model swaps
+(o-series exhausts the token budget on internal reasoning before
+producing output), or Microsoft Presidio PII redaction (the
+placeholders confuse the model into bailing more often). The
+findings doc has the receipts.
 
-Slice 1 won't catch chunk patterns or patterns where the JDA and Pine
-token counts differ — those need real tree alignment. That's slice 2.
+## Audience classification
 
-The miner is **read-only against the active library**: it never
-silently registers a pattern. Every candidate is reviewed before
-promotion.
+Two signal sources, combined:
 
-### Important caveat: slice 1 candidates are noisy
+1. Template filename — matches like `Letter to C`, `Process Ltr R`,
+   `Letter to Disbarred`. Strongest signal when present.
+2. Token-frequency fallback — counts recognised involvement entities
+   in the extracted JDA token stream. Returns the dominant class if
+   it has ≥60% share over at least 3 references.
 
-Index alignment is wrong whenever the legacy and pine templates have
-the same token count *but the order doesn't correspond*. Real example
-from the OBA corpus: address fields in the legacy template are
-`Address / City / StateCode / Zip`; the Pine template has them in the
-same order but a stray `CreateVar` filtered earlier shifts the index
-mapping by one, producing a bogus pair like `JDA .StateCode → Pine
-.City`. The miner can't see this — it trusts the index.
+Returns `"complainant"` / `"respondent"` / `None`. The result threads
+through to:
+- the LLM prompt's `DOCUMENT AUDIENCE` hint
+- `suggestion_store.load_verified_for_org(..., audience=...)` so
+  audience-scoped suggestions only fire on documents the classifier
+  agrees on
 
-Mitigation: every mined candidate is `verification = "candidate"` and
-sits in `_candidates/` until a human inspects it. The reviewer is
-expected to catch and discard wrong pairings. Slice 2 will use tree
-alignment on the AST shapes to filter these automatically.
+## Prelude generation
 
-Running the miner on the full ~300-pair corpus today produces:
+Pine templates that reference *child* entities (`*Address`, `*Phone`,
+`*Email`) need a two-step lookup: first declare the Root entity
+(`Complainant`, `Respondent`, …), then declare the child filtered by
+`NameID` or `PersonnelID`. `generate_prelude` walks the converted
+Pine stream, identifies the referenced child entities, and produces
+the ordered list of `CreateVar` declarations to prepend. Parents
+before children, deduplicated.
+
+`prepend_prelude_to_rtf` then splices that prelude into the converted
+RTF at the document's first `\par` so the output is self-contained.
+
+The classification rules are universal Pine data-model facts —
+involvement entities filter by `NameID`, assignment entities filter
+by `PersonnelID`. The org overrides supply the deployment-specific
+type codes.
+
+## Scoped suggestion store
+
+Each verified suggestion is one TOML file on disk under:
 
 ```
-Templates processed:        298
-Token-pairs examined:       290   (from same-count templates only)
-Already covered:            20    (existing patterns work)
-Skipped (count mismatch):   270   (slice 2 territory — most templates)
-Un-mineable (slice 1):      229   (single-entity heuristic didn't fire)
-Distinct candidates:        14    (after dedup; some are wrong, see above)
+v2/suggestions/verified/<org>/{global | by_template/<name> | by_audience/<name>}/
 ```
 
-Most templates differ in token count between sides because Pine
-typically has CreateVar prelude declarations that JDA doesn't, plus
-patterns like `.FullName` splitting into two Pine tokens. Slice 2's
-tree alignment is what unlocks meaningful mining for those.
+`accept_suggestion(jda, pine, org, *, scope=...)` writes a file;
+`load_verified_for_org(org, *, template_name=..., audience=...)`
+returns only the patterns whose scope matches the current document
+(`global` always loads; `by_template` only when the filename matches;
+`by_audience` only when the classifier agrees).
+
+The store supports the full range of mapping shapes:
+
+| shape | example | use |
+|---|---|---|
+| 1:1 | `%[X.A]` → `@[Y.A]` | the common case |
+| 1:N | `%[X.FullName]` → `@[Y.first.NameFirstName] @[Y.first.NameLastName]` | bare-name splitting |
+| N:M | `[%[A], %[B]]` → `[@[A'], @[B']]` | literal chunk pattern from a hand-edit |
+| N:0 | `%[X.FBINum]` → `[]` | drop pattern — emit nothing |
+
+Scoped overrides get priority 500 (vs 150 global, 100 seed), so a
+converter's "this template's `Cust_X` should map differently" edit
+wins inside its scope without polluting other templates.
+
+A documented hazard: global suggestions are context-blind. They re-
+apply on every template that mentions the same JDA token, which can
+poison F1 on templates where the original mapping was correct in a
+different context. The HITL flow defaults to the narrowest available
+scope (template > audience > global) precisely to avoid this.

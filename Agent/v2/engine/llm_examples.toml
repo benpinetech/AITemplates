@@ -1,0 +1,149 @@
+# Pine syntax shape templates for the LLM prompt.
+#
+# These are NEVER loaded by ``pattern_loader.load_library()`` — they
+# live outside the patterns/ tree on purpose. They're loaded by
+# ``Agent.v2.tools.convert`` and passed through to ``LlmFallback`` as
+# the ``shape_examples`` field, where they're rendered in the prompt
+# under "PINE SYNTAX SHAPE TEMPLATES".
+#
+# Convention: ``<X>`` is a placeholder for whichever Pine entity the
+# real input resolves to. The LLM has already been told (via the per-
+# input entity hint + the JDA→Pine entity table in the system role
+# enum) which entity ``<X>`` should expand to for any given input.
+#
+# Edit freely. Each example is a (match, rewrite) pair — match is JDA
+# template syntax with ``<placeholder>`` markers, rewrite is the Pine
+# shape with the same placeholders substituted into the right slots.
+# Adding a new example just expands the LLM's working set of shapes;
+# it never changes deterministic match behaviour.
+
+# ── Person name fields ─────────────────────────────────────────────
+
+[[example]]
+match   = "%[<X>.FullName]"
+rewrite = "@[<X>.first.NameFirst] @[<X>.first.NameLast]"
+note    = "Bare FullName → split first/last (hearing-template form)"
+
+[[example]]
+match   = "%[TitleCase(<X>.FullName)]"
+rewrite = "@[<X>.first.FormatName(F L).SetCasing(Title)]"
+
+[[example]]
+match   = "%[UpperCase(<X>.FullName)]"
+rewrite = "@[<X>.first.FormatName(F L).SetCasing(Upper)]"
+
+[[example]]
+match   = "%[Initials(<X>.FullName,false)]"
+rewrite = "@[<X>.first.FormatName(FILI)]"
+note    = "Signature lines — Form C"
+
+[[example]]
+match   = "%[<X>.FirstName]"
+rewrite = "@[<X>.first.NameFirst]"
+
+[[example]]
+match   = "%[<X>.LastName]"
+rewrite = "@[<X>.first.NameLast]"
+
+[[example]]
+match   = "%[TitleCase(<X>.LastName)]"
+rewrite = "@[<X>.first.FormatName(L).SetCasing(Title)]"
+note    = "Salutation form for letter templates (Dear …:)"
+
+# ── Honorific / pronoun fields ────────────────────────────────────
+
+[[example]]
+match   = "%[<X>.MrMs]"
+rewrite = "@[<X>.first.MrMs]"
+
+[[example]]
+match   = "%[<X>.HisHer]"
+rewrite = "@[<X>.first.HisHer]"
+
+[[example]]
+match   = "%[<X>.HeShe]"
+rewrite = "@[<X>.first.HeShe]"
+
+[[example]]
+match   = "%[<X>.HimHer]"
+rewrite = "@[<X>.first.HimHer]"
+
+# ── Address subfields ─────────────────────────────────────────────
+# JDA address suffixes (_Address, _RosterAddress, _MailAddress) all
+# resolve to the SAME Pine ``<X>Address`` entity. Fields go on
+# ``.first.<Subfield>`` of that address entity.
+
+[[example]]
+match   = "%[<X>_Address.Address]"
+rewrite = "@[<X>Address.first.StreetAddress]"
+
+[[example]]
+match   = "%[TitleCase(<X>_Address.Address)]"
+rewrite = "@[<X>Address.first.StreetAddress.SetCasing(Title)]"
+
+[[example]]
+match   = "%[<X>_Address.City]"
+rewrite = "@[<X>Address.first.City]"
+
+[[example]]
+match   = "%[TitleCase(<X>_Address.City)]"
+rewrite = "@[<X>Address.first.City.SetCasing(Title)]"
+
+[[example]]
+match   = "%[<X>_Address.StateCode]"
+rewrite = "@[<X>Address.first.State]"
+
+[[example]]
+match   = "%[<X>_Address.Zip]"
+rewrite = "@[<X>Address.first.Zip]"
+
+# ── Conditional polarity flip ─────────────────────────────────────
+# JDA ``IsEmpty = true`` checks become Pine ``.Any() == true`` (the
+# polarity flips — JDA "is empty" → Pine "has rows" — and the if/else
+# bodies swap, handled by branch_swap before the LLM ever sees these).
+
+[[example]]
+match   = "%[If(<X>.FullName.IsEmpty = true)]"
+rewrite = "@[If(@[<X>.Any()] == true)]"
+
+[[example]]
+match   = "%[If(<X>.LastName.IsEmpty = true)]"
+rewrite = "@[If(@[<X>.Any()] == true)]"
+
+[[example]]
+match   = "%[If(<X>.FullName.IsNullOrEmpty = true)]"
+rewrite = "@[If(@[<X>.Any()] == true)]"
+
+# ── Drop conventions ──────────────────────────────────────────────
+# These JDA tokens are intentionally dropped — the deployment has the
+# information elsewhere (pre-set in the template editor) or the field
+# is internal and never rendered in user-facing output.
+
+[[example]]
+match   = "%[<X>.Title]"
+rewrite = ""
+note    = "Attorney titles are pre-set in the deployment; drop"
+
+[[example]]
+match   = "%[<X>.StateIDNum]"
+rewrite = ""
+note    = "State ID is internal; never rendered"
+
+[[example]]
+match   = "%[<X>.AgencyNum]"
+rewrite = ""
+note    = "Agency number is internal; never rendered"
+
+# ── Built-in identifiers ──────────────────────────────────────────
+
+[[example]]
+match   = "%[CurrentUser.FirstName]"
+rewrite = "@[cu.NameFirst]"
+
+[[example]]
+match   = "%[CurrentUser.LastName]"
+rewrite = "@[cu.NameLast]"
+
+[[example]]
+match   = "%[Initials(CurrentUser.FullName,false)]"
+rewrite = "@[cu.FormatName(FILI)]"

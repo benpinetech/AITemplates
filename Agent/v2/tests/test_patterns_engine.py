@@ -163,44 +163,6 @@ class TestPromptVariables:
             assert result.pattern.id != "prompt_variable_self_dotted"
 
 
-# ─── OBA full name and last name ────────────────────────────────────────────
-
-class TestOBAFormatName:
-    def test_titlecase_fullname(self, library):
-        result = _convert("%[TitleCase(JW_Respondent.FullName)]", library, org="oba")
-        assert result.matched
-        assert result.pattern.id == "oba_fullname_titlecase"
-        assert result.outputs[0].unparse() == (
-            "@[Respondent.first.FormatName(F L).SetCasing(Title)]"
-        )
-
-    def test_uppercase_fullname_complainant(self, library):
-        result = _convert(
-            "%[UpperCase(Cust_Complainant.FullName)]", library, org="oba",
-        )
-        assert result.matched
-        assert result.outputs[0].unparse() == (
-            "@[Complainant.first.FormatName(F L).SetCasing(Upper)]"
-        )
-
-    def test_titlecase_lastname_salutation(self, library):
-        result = _convert(
-            "%[TitleCase(Cust_OBAAttorney.LastName)]", library, org="oba",
-        )
-        assert result.matched
-        assert result.pattern.id == "oba_lastname_titlecase"
-        assert result.outputs[0].unparse() == (
-            "@[OBAAttorney.first.FormatName(L).SetCasing(Title)]"
-        )
-
-    def test_oba_pattern_inactive_outside_oba(self, library):
-        # An OBA-specific pattern should NOT match when org=criminal-pd.
-        result = _convert(
-            "%[TitleCase(JW_Respondent.FullName)]", library, org="criminal-pd",
-        )
-        assert not result.matched
-
-
 # ─── No-match path ──────────────────────────────────────────────────────────
 
 class TestNoMatch:

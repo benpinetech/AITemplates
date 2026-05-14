@@ -1,0 +1,122 @@
+# OBA bare-name patterns — split-form output.
+#
+# When JDA has a *bare* X.FullName / X.LastName / X.FirstName / X.MrMs
+# (no TitleCase wrapper), OBA's convention is to emit two separate
+# Pine tokens using the entity's split fields:
+#
+#   - Involvement entities (Respondent, Complainant, ...):
+#       FullName → NameFirstName + NameLastName
+#       LastName → NameLastName
+#       FirstName / MrMs → NameFirstName
+#   - Assignment entities (OBAAttorney, RespondentAtty, Defense, ...):
+#       FullName → PersonnelFirstName + PersonnelLastName
+#       LastName → PersonnelLastName
+#       FirstName / MrMs → PersonnelFirstName
+#
+# Source: pine_syntax_ground_truth.txt §30 ("Bare X.FullName (no
+# wrapper) → split into two tokens"). Confirmed against the actual
+# verified-pine corpus — split-form Name*Name + Personnel*Name appear
+# ~2400× combined; combined FormatName(F L) appears only when the
+# JDA source has a TitleCase wrapper.
+
+[[pattern]]
+id          = "oba_fullname_bare"
+description = "%[X.FullName] (bare) → split first+last per entity class"
+provenance  = "hand-written"
+verification = "verified"
+notes       = "§30 bare-form rule. Two Pine tokens output."
+org_context = "oba"
+priority    = 100
+
+match   = "%[$entity.FullName]"
+rewrite = [
+  "@[$entity_pine.first.$first_field]",
+  "@[$entity_pine.first.$last_field]",
+]
+
+[pattern.holes.entity]
+kind = "path-segment"
+
+[pattern.holes.entity_pine]
+derive_from = "entity"
+transform   = "translate_jda_entity_to_pine"
+
+[pattern.holes.first_field]
+derive_from = "entity"
+transform   = "jda_entity_to_pine_first_name_field"
+
+[pattern.holes.last_field]
+derive_from = "entity"
+transform   = "jda_entity_to_pine_last_name_field"
+
+
+[[pattern]]
+id          = "oba_lastname_bare"
+description = "%[X.LastName] (bare) → @[Y.first.NameLastName] (or PersonnelLastName)"
+provenance  = "hand-written"
+verification = "verified"
+notes       = "§30."
+org_context = "oba"
+priority    = 100
+
+match   = "%[$entity.LastName]"
+rewrite = "@[$entity_pine.first.$last_field]"
+
+[pattern.holes.entity]
+kind = "path-segment"
+
+[pattern.holes.entity_pine]
+derive_from = "entity"
+transform   = "translate_jda_entity_to_pine"
+
+[pattern.holes.last_field]
+derive_from = "entity"
+transform   = "jda_entity_to_pine_last_name_field"
+
+
+[[pattern]]
+id          = "oba_firstname_bare"
+description = "%[X.FirstName] (bare) → @[Y.first.NameFirstName] (or PersonnelFirstName)"
+provenance  = "hand-written"
+verification = "verified"
+notes       = "§30."
+org_context = "oba"
+priority    = 100
+
+match   = "%[$entity.FirstName]"
+rewrite = "@[$entity_pine.first.$first_field]"
+
+[pattern.holes.entity]
+kind = "path-segment"
+
+[pattern.holes.entity_pine]
+derive_from = "entity"
+transform   = "translate_jda_entity_to_pine"
+
+[pattern.holes.first_field]
+derive_from = "entity"
+transform   = "jda_entity_to_pine_first_name_field"
+
+
+[[pattern]]
+id          = "oba_mrms"
+description = "%[X.MrMs] → @[Y.first.NameFirstName] (Pine has no honorific field; salutation uses first name)"
+provenance  = "hand-written"
+verification = "verified"
+notes       = "§30: 'Pine replaces \"Dear Mr./Ms. LastName\" with \"Dear FirstName LastName\".'"
+org_context = "oba"
+priority    = 100
+
+match   = "%[$entity.MrMs]"
+rewrite = "@[$entity_pine.first.$first_field]"
+
+[pattern.holes.entity]
+kind = "path-segment"
+
+[pattern.holes.entity_pine]
+derive_from = "entity"
+transform   = "translate_jda_entity_to_pine"
+
+[pattern.holes.first_field]
+derive_from = "entity"
+transform   = "jda_entity_to_pine_first_name_field"

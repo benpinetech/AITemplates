@@ -27,6 +27,17 @@ DEFAULT_PINE_DIR = str(GROUND_TRUTH_DIR / "evaluation_templates" / "jda_to_pine"
 sys.path.insert(0, str(GUI_DIR))
 from rtf_render import init_renderer, render_rtf, highlight_legacy, highlight_pine, highlight_ground_truth
 
+# Load the repo-root .env so OPENAI_API_KEY (etc.) is visible to this
+# Streamlit process AND to any subprocesses we spawn (since they inherit
+# os.environ unless we explicitly override it). This is the same .env
+# file that v1's Agent/src/main.py loads, so the two pipelines share
+# one canonical key location.
+try:
+    from dotenv import load_dotenv
+    load_dotenv(AGENT_DIR.parent / ".env")
+except ImportError:
+    pass
+
 st.set_page_config(page_title="Eval Dashboard (v1)", layout="wide")
 st.title("Evaluation Dashboard")
 st.caption(
@@ -132,12 +143,80 @@ def render_template_panel(rtf_content: str, token_type: str, label: str):
 # ── sidebar: run evaluation ───────────────────────────────────────────────────
 with st.sidebar:
     st.header("Run Evaluation")
+    pipeline_choice = st.radio(
+        "Pipeline",
+        ["v1 (token-by-token agent)", "v2 (chunk-based)"],
+        horizontal=False,
+        help="v1 routes through Agent/src/main.py. v2 routes through "
+             "Agent/v2/tools/eval_v2.py — same eval scoring, different "
+             "conversion engine. v2 supports auto-acceptance of LLM "
+             "suggestions so subsequent templates that hit the same "
+             "JDA token convert deterministically.",
+    )
+    is_v2 = pipeline_choice.startswith("v2")
     eval_mode = st.radio("Mode", ["Batch", "Single Template"], horizontal=True)
 
     if eval_mode == "Batch":
         legacy_dir_input = st.text_input("Legacy dir", value=DEFAULT_LEGACY_DIR)
         pine_dir_input   = st.text_input("Pine dir",   value=DEFAULT_PINE_DIR)
-        run_label        = st.text_input("Label (optional)", placeholder="e.g. gpt-5-mini baseline")
+        run_label        = st.text_input(
+            "Label (optional)",
+            placeholder="e.g. v2 cold" if is_v2 else "e.g. gpt-5-mini baseline",
+        )
+
+        # v2-specific knobs.
+        v2_org = "oba"
+        v2_use_llm = False
+        v2_auto_accept = False
+        v2_reverse = False
+        if is_v2:
+            v2_org = st.selectbox(
+                "Org context",
+                options=["oba", "any"],
+                index=0,
+                help="Picks which patterns + vocabulary apply.",
+            )
+            has_key = bool(os.environ.get("OPENAI_API_KEY"))
+            st.caption(
+                "**Recommended: patterns + LLM.** With gpt-5.5 + the RAG "
+                "tool, patterns + LLM hits macro F1 ≈ 0.674 (best on this "
+                "corpus) — the LLM handles the long-tail tokens patterns "
+                "can't reach. Patterns-only is faster (9 s vs ~24 min) and "
+                "still gets F1 ≈ 0.670, so use it for iteration / debugging "
+                "and the LLM run for production output."
+                + ("" if has_key else
+                   " &nbsp; *Set `OPENAI_API_KEY` in `.env` to enable the LLM toggle.*")
+            )
+            v2_use_llm = st.checkbox(
+                "Enable LLM fallback",
+                value=has_key,
+                disabled=not has_key,
+                help="Hits the OpenAI API in one batched call per template, "
+                     "with multi-turn RAG search over the Pine syntax "
+                     "reference. Adds ~5 s per template; in exchange it "
+                     "covers entities and constructs the patterns don't. "
+                     "Default model: gpt-5.5 (set OPENAI_MODEL to override).",
+            )
+            v2_auto_accept = st.checkbox(
+                "Auto-accept LLM suggestions (writes to disk)",
+                value=False,
+                disabled=not v2_use_llm,
+                help="DANGEROUS for production: persists every LLM-produced "
+                     "(jda, pine) pair into suggestions/verified/<org>/ "
+                     "during the run. Past testing showed context-blind "
+                     "cached suggestions hurt 181 templates and helped only "
+                     "7. Use only when you're prepared to audit and prune "
+                     "the cache. Useful for cold-vs-warm timing comparisons.",
+            )
+            v2_reverse = st.checkbox(
+                "Reverse template order",
+                value=False,
+                help="Iterate templates in reverse alphabetical order. "
+                     "Use to diagnose whether precision drops are caused "
+                     "by template ordering (cache warm-up, LLM context "
+                     "drift) or by template content (later templates "
+                     "having more diverse JDA syntax).",
+            )
 
         # ── template picker ───────────────────────────────────────────────────
         _lp = Path(legacy_dir_input)
@@ -149,10 +228,10 @@ with st.sidebar:
         if matched_pairs:
             st.caption(f"{len(matched_pairs)} template pairs found")
             c1, c2 = st.columns(2)
-            if c1.button("All", use_container_width=True):
+            if c1.button("All", width="stretch"):
                 for n in matched_pairs:
                     st.session_state[f"tmpl_{n}"] = True
-            if c2.button("None", use_container_width=True):
+            if c2.button("None", width="stretch"):
                 for n in matched_pairs:
                     st.session_state[f"tmpl_{n}"] = False
 
@@ -173,22 +252,27 @@ with st.sidebar:
         run_btn = st.button(
             "Run Batch",
             type="primary",
-            use_container_width=True,
+            width="stretch",
             disabled=not selected or bool(st.session_state.get("eval_running")),
         )
 
         if run_btn:
             st.session_state.eval_running             = True
             st.session_state.eval_mode                = "batch"
+            st.session_state.eval_pipeline            = "v2" if is_v2 else "v1"
             st.session_state.eval_legacy_dir          = legacy_dir_input
             st.session_state.eval_pine_dir            = pine_dir_input
             st.session_state.eval_label               = run_label
             st.session_state.eval_total_templates     = len(selected)
             st.session_state.eval_selected_templates  = selected
+            st.session_state.eval_v2_org              = v2_org
+            st.session_state.eval_v2_use_llm          = v2_use_llm
+            st.session_state.eval_v2_auto_accept      = v2_auto_accept
+            st.session_state.eval_v2_reverse          = v2_reverse
             st.session_state.single_result            = None
 
         if st.session_state.get("eval_running") and st.session_state.get("eval_mode") == "batch":
-            if st.button("Stop Run", type="secondary", use_container_width=True):
+            if st.button("Stop Run", type="secondary", width="stretch"):
                 st.session_state.stop_requested = True
                 st.rerun()
 
@@ -199,7 +283,7 @@ with st.sidebar:
         run_single    = st.button(
             "Run Single",
             type="primary",
-            use_container_width=True,
+            width="stretch",
             disabled=not (legacy_upload and pine_upload),
         )
 
@@ -267,18 +351,38 @@ if st.session_state.get("eval_running"):
         total_templates = st.session_state.get("eval_total_templates", "?")
         combined_area = st.empty()
 
-        cmd = [
-            sys.executable, "-u",
-            str(SRC_DIR / "main.py"),
-            "-e",
-            "--legacy-dir", st.session_state.eval_legacy_dir,
-            "--pine-dir",   st.session_state.eval_pine_dir,
-        ]
+        pipeline_id = st.session_state.get("eval_pipeline", "v1")
+        if pipeline_id == "v2":
+            cmd = [
+                sys.executable, "-u",
+                str(AGENT_DIR / "v2" / "tools" / "eval_v2.py"),
+                "--legacy-dir", st.session_state.eval_legacy_dir,
+                "--pine-dir",   st.session_state.eval_pine_dir,
+                "--org",        st.session_state.get("eval_v2_org", "oba"),
+            ]
+            if st.session_state.get("eval_v2_use_llm"):
+                cmd.append("--use-llm")
+            if st.session_state.get("eval_v2_auto_accept"):
+                cmd.append("--auto-accept")
+            if st.session_state.get("eval_v2_reverse"):
+                cmd.append("--reverse")
+        else:
+            cmd = [
+                sys.executable, "-u",
+                str(SRC_DIR / "main.py"),
+                "-e",
+                "--legacy-dir", st.session_state.eval_legacy_dir,
+                "--pine-dir",   st.session_state.eval_pine_dir,
+            ]
         if st.session_state.get("eval_label"):
             cmd += ["--label", st.session_state.eval_label]
         if st.session_state.get("eval_selected_templates"):
             cmd += ["--templates"] + st.session_state.eval_selected_templates
 
+        # PYTHONPATH=Agent so `from v2... import ...` resolves cleanly
+        # in both the eval_v2 script (which adds it itself) and any
+        # imports inside the v1 main.py path.
+        env = {**os.environ, "PYTHONPATH": str(AGENT_DIR)}
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
@@ -286,6 +390,7 @@ if st.session_state.get("eval_running"):
             text=True,
             bufsize=1,
             cwd=str(AGENT_DIR),
+            env=env,
         )
         st.session_state.eval_proc_pid = proc.pid
 
@@ -404,16 +509,64 @@ chart_df = pd.DataFrame([
         "Run ID": r["run_id"],
         "Timestamp": r["timestamp"][:19].replace("T", " "),
         "Status": r.get("status", "complete"),
-        "Templates": r["summary"]["total_templates"],
-        "Micro F1": round(r["summary"]["micro_f1"], 4),
-        "Micro Recall": round(r["summary"]["micro_recall"], 4),
-        "Micro Precision": round(r["summary"]["micro_precision"], 4),
-        "Macro F1": round(r["summary"]["macro_f1"], 4),
+        "Templates": r.get("summary", {}).get("total_templates", 0),
+        "Skipped (broken)": len(r.get("skipped_broken", []) or []),
+        "Micro F1": round(r.get("summary", {}).get("micro_f1", 0.0), 4),
+        "Micro Recall": round(r.get("summary", {}).get("micro_recall", 0.0), 4),
+        "Micro Precision": round(r.get("summary", {}).get("micro_precision", 0.0), 4),
+        "Macro F1": round(r.get("summary", {}).get("macro_f1", 0.0), 4),
+        "Macro Recall": round(r.get("summary", {}).get("macro_recall", 0.0), 4),
+        "Macro Precision": round(r.get("summary", {}).get("macro_precision", 0.0), 4),
     }
     for r in runs
 ]).sort_values("Timestamp")
 
-# Long-form for multi-metric altair chart
+# ── Macro F1 trend (the headline chart) ───────────────────────────────────────
+st.markdown("**Macro F1 trend**")
+macro_long_df = chart_df.melt(
+    id_vars=["Run", "Run ID", "Timestamp", "Status", "Templates", "Skipped (broken)"],
+    value_vars=["Macro F1", "Macro Recall", "Macro Precision"],
+    var_name="Metric",
+    value_name="Value",
+)
+macro_base = alt.Chart(macro_long_df).encode(
+    x=alt.X("Timestamp:N", sort=None, title=None, axis=alt.Axis(labelAngle=-30)),
+    y=alt.Y("Value:Q", scale=alt.Scale(domain=[0, 1]), axis=alt.Axis(format="%")),
+    color=alt.Color(
+        "Metric:N",
+        legend=alt.Legend(orient="top"),
+        scale=alt.Scale(
+            domain=["Macro F1", "Macro Recall", "Macro Precision"],
+            # F1 in bold blue, recall/precision in lighter shades
+            range=["#1f77b4", "#7fb8d8", "#a8c8e1"],
+        ),
+    ),
+    strokeWidth=alt.condition(
+        "datum.Metric == 'Macro F1'",
+        alt.value(3),
+        alt.value(1.5),
+    ),
+    tooltip=[
+        alt.Tooltip("Run:N"),
+        alt.Tooltip("Timestamp:N"),
+        alt.Tooltip("Templates:Q"),
+        alt.Tooltip("Skipped (broken):Q"),
+        alt.Tooltip("Status:N"),
+        alt.Tooltip("Metric:N"),
+        alt.Tooltip("Value:Q", format=".1%"),
+    ],
+)
+macro_line = macro_base.mark_line(point=True)
+st.altair_chart(macro_line.properties(height=280), width="stretch")
+st.caption(
+    "Macro F1 is the per-template-averaged F1. Runs that skip broken "
+    "templates (e.g. legacy with 0 JDA tokens, empty pine) are scored only "
+    "on eligible templates — the **Skipped (broken)** column shows how "
+    "many were excluded for each run."
+)
+
+# ── Micro metrics chart (kept for reference) ──────────────────────────────────
+st.markdown("**Micro F1 trend** (token-pooled across all templates)")
 long_df = chart_df.melt(
     id_vars=["Run", "Run ID", "Timestamp", "Status", "Templates"],
     value_vars=["Micro F1", "Micro Recall", "Micro Precision"],
@@ -435,7 +588,7 @@ base = alt.Chart(long_df).encode(
     ],
 )
 line = base.mark_line(point=True, strokeWidth=2)
-st.altair_chart(line.properties(height=260), use_container_width=True)
+st.altair_chart(line.properties(height=220), width="stretch")
 
 # Runs summary table
 def _status_badge(s: str) -> str:
@@ -475,7 +628,7 @@ st.dataframe(
         "Micro F1": "{:.1%}", "Micro Recall": "{:.1%}",
         "Micro Precision": "{:.1%}", "Macro F1": "{:.1%}",
     }),
-    use_container_width=True,
+    width="stretch",
     height=200,
 )
 
@@ -513,6 +666,13 @@ m3.metric("Micro Precision", pct(s["micro_precision"]), delta=_delta_pct(s["micr
 m4.metric("Macro F1",        pct(s["macro_f1"]),        delta=_delta_pct(s["macro_f1"], prev_s["macro_f1"] if prev_s else None))
 m5.metric("Templates",       s["total_templates"])
 m6.metric("Duration",        fmt_duration(s["total_duration"]))
+
+# Show which templates this run intentionally excluded as broken.
+skipped_broken = selected_run.get("skipped_broken") or []
+if skipped_broken:
+    with st.expander(f"Skipped {len(skipped_broken)} broken template(s) — corpus issues, not agent quality"):
+        for s_ in skipped_broken:
+            st.markdown(f"- **{s_.get('name', '?')}** — {s_.get('reason', '')}")
 
 templates = selected_run.get("templates", [])
 
@@ -554,7 +714,7 @@ if templates:
         )
         .properties(height=260, title="Per-template F1 (this run)")
     )
-    st.altair_chart(bar, use_container_width=True)
+    st.altair_chart(bar, width="stretch")
 
 # ── token analytics for the selected run (with delta vs previous) ─────────────
 st.markdown("### Token Analytics — This Run")
@@ -590,7 +750,7 @@ with an_col1:
     st.markdown(f"**Most Common Missing ({sum(run_missing.values())} total)**")
     if run_missing:
         df = _token_table(run_missing, prev_missing)
-        st.dataframe(df, use_container_width=True, hide_index=True, height=380)
+        st.dataframe(df, width="stretch", hide_index=True, height=380)
     else:
         st.caption("None — all expected tokens were produced.")
 
@@ -612,7 +772,7 @@ with an_col2:
     st.markdown(f"**Most Common Extra ({sum(run_extra.values())} total)**")
     if run_extra:
         df = _token_table(run_extra, prev_extra)
-        st.dataframe(df, use_container_width=True, hide_index=True, height=380)
+        st.dataframe(df, width="stretch", hide_index=True, height=380)
     else:
         st.caption("None — no hallucinated tokens.")
 
@@ -631,6 +791,10 @@ with an_col2:
 
 st.divider()
 st.markdown("### Per-template Breakdown")
+
+if not templates:
+    st.info("This run produced no per-template results.")
+    st.stop()
 
 tmpl_df = pd.DataFrame([
     {
@@ -655,7 +819,7 @@ st.dataframe(
     tmpl_df.style.map(_style_f1, subset=["F1"]).format({
         "Recall": "{:.1%}", "Precision": "{:.1%}", "F1": "{:.1%}",
     }),
-    use_container_width=True,
+    width="stretch",
     height=300,
 )
 

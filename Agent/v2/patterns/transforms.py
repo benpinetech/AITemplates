@@ -47,46 +47,115 @@ _JDA_TO_PINE_ENTITY: Dict[str, str] = {
     "Cust_Defense": "Defense",
     "JW_Defense": "Defense",
     "Cust_Atty_Def_Active": "Defense",
+    "JW_Atty_Def_Active": "Defense",
+    "KF_Atty_Def_Active": "Defense",
     "KF_DefAtty": "Defense",
     "Cust_DefAtty": "Defense",
     "JW_Atty_Pros_Active": "Prosecutor",
     "KF_Atty_Pros_Active": "Prosecutor",
+    "kf_Atty_Pros_Active": "Prosecutor",
+    "KF_Atty_Pros_Inactive": "Prosecutor",
     "Cust_Atty_Pros_Active": "Prosecutor",
     "Cust_Prosecutor": "Prosecutor",
     "JW_Prosecutor": "Prosecutor",
     "Cust_Investigator": "Investigator",
+    "JW_Atty_Inv_Active": "Investigator",
+    "JW_Investigator": "Investigator",
+    "KF_Investigator": "Investigator",
     "Cust_IntakeProsecutor": "IntakeProsecutor",
     "JW_FilingComplainant": "FilingComplainant",
+    # Petitioner — corpus uses both Petitioner and Complainant for similar roles.
+    "KF_Petitioner": "Complainant",
+    # kf_Defendant family
+    "kf_VicWitOff": "Complainant",
     # Current user
     "JW_CurrentUser": "cu",
     "CurrentUser": "cu",
-    # Address entities (suffix-form)
+    # Address entities (suffix-form). The corpus uses several
+    # interchangeable suffixes (_RosterAddress, _MailAddress, _Address)
+    # for the same Pine entity.
     "JW_Respondent_RosterAddress": "RespondentAddress",
+    "JW_Respondent_Address": "RespondentAddress",
+    "JW_Defendant_Address": "RespondentAddress",
     "Cust_RespondentAtty_RosterAddress": "RespondentAttyAddress",
     "Cust_Complainant_MailAddress": "ComplainantAddress",
+    "Cust_Complainant_Address": "ComplainantAddress",
     "JW_Complainant_RosterAddress": "ComplainantAddress",
+    "JW_VicWitOff_Address": "ComplainantAddress",
     "KF_DefAtty_RosterAddress": "DefenseAddress",
+    "JW_Atty_Def_Active_Address": "DefenseAddress",
+    "Cust_Atty_Def_Active_Address": "DefenseAddress",
+    "KF_Atty_Def_Active_Address": "DefenseAddress",
+    "JW_Atty_Pros_Active_Address": "ProsecutorAddress",
+    "Cust_Atty_Pros_Active_Address": "ProsecutorAddress",
+    "Cust_Investigator_Address": "InvestigatorAddress",
+    "Cust_CIPs_Address": "CIPAddress",
+    "KF_Atty_Def_Active_Address": "DefenseAddress",
+    "kf_VicWitOff_Address": "ComplainantAddress",
+    # Added 2026-05 from ground-truth observation. Don't add entries
+    # for entities whose target is context-dependent — see
+    # LLM_CAPABILITY_FINDINGS.md (Cust_CIPs trial & rollback).
+    "KF_Atty_Pros_Active_AgencyNum": "ProsNum",
+    "KF_PhoneNumberActive": "ProsecutorPhone",
 }
 
 
 def translate_jda_entity_to_pine(value: str, org: str) -> str:
     """Map a JDA entity name to its Pine equivalent.
 
-    Raises ``UnknownTransformInputError`` when the entity isn't in the
-    table — the pattern engine treats this as "this pattern doesn't
-    apply for this input" and falls through to the next candidate or
-    to the LLM fallback. Falling back unchanged would emit
-    ``@[JW_Whatever...]`` into Pine output (lint-rule
-    ``no_legacy_entity_prefix_in_pine`` catches it, but we'd rather
-    not produce the bad output in the first place).
+    Two sources are consulted, in order:
+
+      1. The org config's role index (preferred) — built from
+         ``v2/grammar/org_overrides/<org>.toml``. This is what new orgs
+         configure; it carries deployment-specific labeling.
+      2. The legacy hardcoded ``_JDA_TO_PINE_ENTITY`` table (fallback).
+         Originally OBA-specific; kept for back-compat with tests and
+         pattern files that pre-date the role-config consolidation.
+
+    Raises ``UnknownTransformInputError`` when the entity isn't in
+    either source — the pattern engine treats this as "this pattern
+    doesn't apply for this input" and falls through.
     """
     if not isinstance(value, str):
         raise TypeError(
             f"translate_jda_entity_to_pine expects a string, got {type(value).__name__}"
         )
+    # Org-config-driven lookup (preferred).
+    org_root = _try_load_org(org)
+    if org_root is not None:
+        from ..grammar.role_index import role_index_for
+        idx = role_index_for(org_root)
+        if value in idx.jda_to_pine:
+            return idx.jda_to_pine[value]
+    # Legacy table (fallback).
     if value in _JDA_TO_PINE_ENTITY:
         return _JDA_TO_PINE_ENTITY[value]
     raise UnknownTransformInputError(f"Unknown JDA entity: {value!r}")
+
+
+def _try_load_org(org: str):
+    """Load the OrgRoot for ``org``, or None if there's no config or
+    ``org`` is ``"any"``. Caches so repeated calls are cheap."""
+    if not org or org == "any":
+        return None
+    cached = _ORG_CACHE.get(org)
+    if cached is not _UNSET:
+        return cached
+    try:
+        from ..grammar.loaders import load_org_overrides
+        loaded = load_org_overrides(org)
+    except FileNotFoundError:
+        loaded = None
+    except Exception:  # noqa: BLE001 — never break the engine if config is malformed
+        loaded = None
+    _ORG_CACHE[org] = loaded
+    return loaded
+
+
+# Tiny sentinel-based cache so we can distinguish "not yet looked up"
+# from "looked up and found None".
+_UNSET = object()
+_ORG_CACHE: dict = {}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -244,6 +313,57 @@ _ENTITY_TO_INFO_VAR: Dict[str, str] = {
 }
 
 
+# Pine entity classes — drives whether ``X.FullName`` (bare) splits
+# into Name*Name fields (involvement entities, backed by
+# CaseInvolvement) or Personnel*Name fields (assignment entities,
+# backed by CaseAssignment). See pine_syntax_ground_truth.txt §30:
+# "Bare X.FullName (no wrapper) → split into two tokens".
+_INVOLVEMENT_PINE_ENTITIES = frozenset({
+    "Respondent", "Complainant", "FilingComplainant", "PrimaryInvolvement",
+})
+_ASSIGNMENT_PINE_ENTITIES = frozenset({
+    "OBAAttorney", "RespondentAtty", "Defense", "Prosecutor",
+    "Investigator", "IntakeProsecutor",
+})
+
+
+def _classify_pine_entity(pine_entity: str, org: str = "any") -> str:
+    """Return ``"name"`` (involvement → NameFirstName/NameLastName) or
+    ``"personnel"`` (assignment → PersonnelFirstName/PersonnelLastName).
+    Raises ``UnknownTransformInputError`` for entities we don't classify
+    yet — caller falls through to LLM.
+
+    Prefers the org config's role index; falls back to the hardcoded
+    sets for back-compat."""
+    org_root = _try_load_org(org)
+    if org_root is not None:
+        from ..grammar.role_index import role_index_for
+        idx = role_index_for(org_root)
+        if idx.is_involvement(pine_entity):
+            return "name"
+        if idx.is_assignment(pine_entity):
+            return "personnel"
+    if pine_entity in _INVOLVEMENT_PINE_ENTITIES:
+        return "name"
+    if pine_entity in _ASSIGNMENT_PINE_ENTITIES:
+        return "personnel"
+    raise UnknownTransformInputError(
+        f"don't know whether {pine_entity!r} is involvement or assignment"
+    )
+
+
+def jda_entity_to_pine_first_name_field(value: str, org: str) -> str:
+    """Map JDA entity → the Pine field name to use for "first name"."""
+    pine = translate_jda_entity_to_pine(value, org)
+    return "NameFirstName" if _classify_pine_entity(pine, org) == "name" else "PersonnelFirstName"
+
+
+def jda_entity_to_pine_last_name_field(value: str, org: str) -> str:
+    """Map JDA entity → the Pine field name to use for "last name"."""
+    pine = translate_jda_entity_to_pine(value, org)
+    return "NameLastName" if _classify_pine_entity(pine, org) == "name" else "PersonnelLastName"
+
+
 def jda_entity_to_pine_info_var(value: str, org: str) -> str:
     """Map a JDA entity name to its OBA-Pine Name-record variable name.
 
@@ -283,6 +403,8 @@ _REGISTRY: Dict[str, TransformFn] = {
     "subdocument_path_to_pine_ids": subdocument_path_to_pine_ids,
     "prompt_variable_camel_case": prompt_variable_camel_case,
     "jda_entity_to_pine_info_var": jda_entity_to_pine_info_var,
+    "jda_entity_to_pine_first_name_field": jda_entity_to_pine_first_name_field,
+    "jda_entity_to_pine_last_name_field": jda_entity_to_pine_last_name_field,
 }
 
 # Rewrite functions are keyed separately because they receive the whole

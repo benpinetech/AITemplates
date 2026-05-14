@@ -79,3 +79,14 @@ eval_runs/
 template_output/
 
 .~lock.*#
+
+# Node / Electron / Vite — converter_app build & deps
+node_modules/
+**/dist/
+.vite/
+**/.vite/
+
+# Playwright
+test-results/
+playwright-report/
+**/.last-run.json

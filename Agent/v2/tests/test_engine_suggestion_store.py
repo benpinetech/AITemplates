@@ -22,8 +22,10 @@ class TestAccept:
             root=tmp_path,
         )
         assert path.exists()
-        assert path.parent.name == "oba"
-        assert path.parent.parent.name == "verified"
+        # Default scope is "global" → verified/oba/global/<id>.toml.
+        assert path.parent.name == "global"
+        assert path.parent.parent.name == "oba"
+        assert path.parent.parent.parent.name == "verified"
         assert path.suffix == ".toml"
         # File name is the stable hash-based id.
         assert path.stem.startswith("verified_")

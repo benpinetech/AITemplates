@@ -151,6 +151,73 @@ class OrgSubdocFamily(BaseModel):
     notes: str = ""
 
 
+class OrgInvolvementRole(BaseModel):
+    """One involvement role (subject, complainant, etc.) for this org.
+
+    The Pine data model is universal — what varies per org is the
+    name the org uses for the variable and the ``Type`` code that
+    identifies the role inside ``@CaseInvolvement.GetByQuery(...)``.
+    """
+
+    pine_name: str
+    """The Pine variable name this org exposes the role as. Examples:
+    ``Respondent`` (OBA), ``Defendant`` (criminal-defense)."""
+
+    type_code: str
+    """The ``Type`` code used in the GetByQuery filter. Examples:
+    ``CIT10`` (OBA Respondent), ``DEF`` (criminal Defendant)."""
+
+    jda_aliases: List[str] = Field(default_factory=list)
+    """All JDA prefixes that mean this role in source templates.
+    Used by ``translate_jda_entity_to_pine`` for normalization."""
+
+    pre_declared: bool = True
+    """If True, the Pine variable-screen for this org's deployment
+    already has this variable defined; the agent doesn't need to
+    emit a ``CreateVar`` for it. If False, prepend a CreateVar."""
+
+
+class OrgAssignmentRole(OrgInvolvementRole):
+    """One assignment role (attorney, prosecutor, judge, investigator…).
+
+    Same shape as an involvement role but the source table is
+    ``CaseAssignment`` instead of ``CaseInvolvement``. We use a
+    distinct class so consumers can switch on the type."""
+
+
+class OrgChildEntity(BaseModel):
+    """A child entity (e.g. ``RespondentAddress``) — these have FK
+    to a Root entity (Personnel / Name), NOT to Case. To use them in
+    a template, the Pine renderer needs either a variable-screen
+    pre-declaration OR an inline ``CreateVar`` that does the two-step
+    lookup.
+    """
+
+    pine_name: str
+    """Pine variable name for this child entity."""
+
+    parent_pine_name: str
+    """Pine variable name of the parent (the involvement or assignment
+    role whose ID we'll filter on). E.g. ``Respondent`` for
+    ``RespondentAddress``."""
+
+    suffix: str
+    """The suffix on the child name that identifies the child type:
+    ``Address``, ``Phone``, ``Email``."""
+
+    source_table: str
+    """The Pine table the child rows live in: ``NameAddress``,
+    ``PersonnelAddress``, ``NamePhone``, etc."""
+
+    jda_aliases: List[str] = Field(default_factory=list)
+    """JDA prefixes that produce this child entity in source templates."""
+
+    pre_declared: bool = True
+    """If True, this org's variable-screen has the child variable
+    pre-declared; no prelude CreateVar needed. If False, prepend the
+    parent CreateVar AND the child CreateVar."""
+
+
 class OrgOverrides(BaseModel):
     org: "OrgRoot"  # forward declaration
 
@@ -171,6 +238,13 @@ class OrgRoot(BaseModel):
     pre_bound_collections: Dict[str, str] = Field(default_factory=dict)
     subdoc_template_family: Optional[OrgSubdocFamily] = None
     vocabulary: OrgVocabulary
+    # New per-org tables — keyed by an org-internal role id (e.g.
+    # "respondent_attorney"), values define how the org names and
+    # fetches the role. Empty by default for back-compat with orgs
+    # whose TOML pre-dates the role/child sections.
+    involvement_roles: Dict[str, OrgInvolvementRole] = Field(default_factory=dict)
+    assignment_roles: Dict[str, OrgAssignmentRole] = Field(default_factory=dict)
+    child_entities: Dict[str, OrgChildEntity] = Field(default_factory=dict)
 
 
 OrgOverrides.model_rebuild()

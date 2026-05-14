@@ -82,7 +82,7 @@ with left:
     )
     st.session_state.request_body = body_text
 
-    send = st.button("Send", type="primary", use_container_width=True)
+    send = st.button("Send", type="primary", width="stretch")
 
 # ── send request ─────────────────────────────────────────────────────────────
 if send:
@@ -153,7 +153,7 @@ if send:
             import pandas as pd
             st.subheader(f"Mappings ({len(mapping_list)})")
             df = pd.DataFrame(mapping_list)
-            st.dataframe(df, use_container_width=True, height=300)
+            st.dataframe(df, width="stretch", height=300)
             st.divider()
 
         # RTF rendered views

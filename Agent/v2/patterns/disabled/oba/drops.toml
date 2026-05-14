@@ -1,0 +1,302 @@
+# OBA drop patterns — JDA tokens that have NO Pine equivalent.
+#
+# These tokens appear in the JDA corpus but the human translator
+# always omits them from the Pine version. We match them and emit
+# zero Pine outputs (empty rewrite list) so:
+#
+#   - the LLM is never asked to translate them (no false-positive
+#     translation that would look plausible but isn't in ground truth)
+#   - the eval ignores the slot (an empty output contributes no
+#     Pine tokens to the comparison)
+#
+# Inventory derived from corpus analysis: each entry below was
+# verified by checking that NO Pine ground-truth file in the corpus
+# contains a translated equivalent of these JDA tokens.
+#
+# See PLAN.md "Workstream 1" for the rationale; see prompts.py rules
+# 4-6 in v1 for the original list.
+
+# ─── identity / case fields with no Pine equivalent ─────────────────────────
+
+[[pattern]]
+id          = "oba_drop_stateidnum"
+description = "%[X.StateIDNum] — no Pine equivalent (humans always drop)"
+provenance  = "hand-written"
+verification = "verified"
+notes       = "Verified absent from Pine corpus across 294 templates."
+org_context = "oba"
+priority    = 200
+
+match   = "%[$entity.StateIDNum]"
+rewrite = []
+
+[pattern.holes.entity]
+kind = "path-segment"
+
+
+[[pattern]]
+id          = "oba_drop_dcnumber"
+description = "%[DCNumber.DCNumber] — no Pine equivalent"
+provenance  = "hand-written"
+verification = "verified"
+org_context = "oba"
+priority    = 200
+
+match   = "%[DCNumber.DCNumber]"
+rewrite = []
+
+
+# ─── titles that humans drop ────────────────────────────────────────────────
+
+[[pattern]]
+id          = "oba_drop_obaattorney_title"
+description = "%[Cust_OBAAttorney.Title] — no Pine equivalent"
+provenance  = "hand-written"
+verification = "verified"
+org_context = "oba"
+priority    = 200
+
+match   = "%[Cust_OBAAttorney.Title]"
+rewrite = []
+
+
+[[pattern]]
+id          = "oba_drop_attyprostitle_attribute"
+description = "%[KF_AttyProsTitle.NameAttributeValue] — no Pine equivalent"
+provenance  = "hand-written"
+verification = "verified"
+org_context = "oba"
+priority    = 200
+
+match   = "%[KF_AttyProsTitle.NameAttributeValue]"
+rewrite = []
+
+
+[[pattern]]
+id          = "oba_drop_attyprostitle_alt"
+description = "%[Cust_AttyProsTitle.NameAttributeValue] — no Pine equivalent"
+provenance  = "hand-written"
+verification = "verified"
+org_context = "oba"
+priority    = 200
+
+match   = "%[Cust_AttyProsTitle.NameAttributeValue]"
+rewrite = []
+
+
+# ─── gender pronouns that humans inline as literal text ─────────────────────
+# JDA uses %[X.HisHer] / %[X.HeShe] / %[X.HimHer] to substitute pronouns at
+# render time; Pine handles this differently — humans just write the
+# literal pronoun in the document and drop these tokens.
+
+[[pattern]]
+id          = "oba_drop_hishher"
+description = "%[X.HisHer] — pronoun inlined in Pine, no equivalent"
+provenance  = "hand-written"
+verification = "verified"
+org_context = "oba"
+priority    = 200
+
+match   = "%[$entity.HisHer]"
+rewrite = []
+
+[pattern.holes.entity]
+kind = "path-segment"
+
+
+[[pattern]]
+id          = "oba_drop_heshe"
+description = "%[X.HeShe] — pronoun inlined in Pine"
+provenance  = "hand-written"
+verification = "verified"
+org_context = "oba"
+priority    = 200
+
+match   = "%[$entity.HeShe]"
+rewrite = []
+
+[pattern.holes.entity]
+kind = "path-segment"
+
+
+[[pattern]]
+id          = "oba_drop_himher"
+description = "%[X.HimHer] — pronoun inlined in Pine"
+provenance  = "hand-written"
+verification = "verified"
+org_context = "oba"
+priority    = 200
+
+match   = "%[$entity.HimHer]"
+rewrite = []
+
+[pattern.holes.entity]
+kind = "path-segment"
+
+
+# ─── identity numbers with no Pine equivalent ───────────────────────────────
+
+[[pattern]]
+id          = "oba_drop_fbinum"
+description = "%[X.FBINum] — no Pine equivalent (FBI numbers absent from corpus)"
+provenance  = "hand-written"
+verification = "verified"
+org_context = "oba"
+priority    = 200
+
+match   = "%[$entity.FBINum]"
+rewrite = []
+
+[pattern.holes.entity]
+kind = "path-segment"
+
+
+[[pattern]]
+id          = "oba_drop_fbinum_upper"
+description = "%[X.FBINUM] — same as FBINum (corpus uses both casings)"
+provenance  = "hand-written"
+verification = "verified"
+org_context = "oba"
+priority    = 200
+
+match   = "%[$entity.FBINUM]"
+rewrite = []
+
+[pattern.holes.entity]
+kind = "path-segment"
+
+
+[[pattern]]
+id          = "oba_drop_dlnumber"
+description = "%[X.DLNumber] — no Pine equivalent (driver's-license numbers absent)"
+provenance  = "hand-written"
+verification = "verified"
+org_context = "oba"
+priority    = 200
+
+match   = "%[$entity.DLNumber]"
+rewrite = []
+
+[pattern.holes.entity]
+kind = "path-segment"
+
+
+[[pattern]]
+id          = "oba_drop_involvetypedesc"
+description = "%[X.InvolveTypeDesc] — no Pine equivalent"
+provenance  = "hand-written"
+verification = "verified"
+org_context = "oba"
+priority    = 200
+
+match   = "%[$entity.InvolveTypeDesc]"
+rewrite = []
+
+[pattern.holes.entity]
+kind = "path-segment"
+
+
+[[pattern]]
+id          = "oba_drop_barnumber"
+description = "%[BarNumber.BarNumber] — no Pine equivalent"
+provenance  = "hand-written"
+verification = "verified"
+org_context = "oba"
+priority    = 200
+
+match   = "%[BarNumber.BarNumber]"
+rewrite = []
+
+
+[[pattern]]
+id          = "oba_drop_termterm"
+description = "%[term.term] — JDA control-flow remnant, no Pine equivalent"
+provenance  = "hand-written"
+verification = "verified"
+org_context = "oba"
+priority    = 200
+
+match   = "%[term.term]"
+rewrite = []
+
+
+# ─── name-attribute lookups with no Pine equivalent ─────────────────────────
+
+[[pattern]]
+id          = "oba_drop_nameattr_kf"
+description = "%[KF_NameAttribute.NameAttributeValue] — no Pine equivalent"
+provenance  = "hand-written"
+verification = "verified"
+org_context = "oba"
+priority    = 200
+
+match   = "%[KF_NameAttribute.NameAttributeValue]"
+rewrite = []
+
+
+[[pattern]]
+id          = "oba_drop_def_nameattr_kf"
+description = "%[KF_Def_NameAttribute.NameAttributeValue] — no Pine equivalent"
+provenance  = "hand-written"
+verification = "verified"
+org_context = "oba"
+priority    = 200
+
+match   = "%[KF_Def_NameAttribute.NameAttributeValue]"
+rewrite = []
+
+
+# ─── case-status events not used in OBA Pine ───────────────────────────────
+
+[[pattern]]
+id          = "oba_drop_casestatus_eventid"
+description = "%[JW_CaseStatusEvents.EventID] — no Pine equivalent"
+provenance  = "hand-written"
+verification = "verified"
+org_context = "oba"
+priority    = 200
+
+match   = "%[JW_CaseStatusEvents.EventID]"
+rewrite = []
+
+
+[[pattern]]
+id          = "oba_drop_casestatus_eventdt"
+description = "%[JW_CaseStatusEvents.EventDt] — no Pine equivalent"
+provenance  = "hand-written"
+verification = "verified"
+org_context = "oba"
+priority    = 200
+
+match   = "%[JW_CaseStatusEvents.EventDt]"
+rewrite = []
+
+
+# ─── multi-select control keywords ──────────────────────────────────────────
+# These are JDA-only conditional-block markers with no Pine equivalent.
+
+[[pattern]]
+id          = "oba_drop_endmultiselect"
+description = "%[EndMultiSelect] — JDA control keyword, no Pine equivalent"
+provenance  = "hand-written"
+verification = "verified"
+org_context = "oba"
+priority    = 200
+
+match   = "%[EndMultiSelect]"
+rewrite = []
+
+
+[[pattern]]
+id          = "oba_drop_multiselect"
+description = "%[MultiSelect(...)] — JDA control keyword, no Pine equivalent"
+provenance  = "hand-written"
+verification = "verified"
+org_context = "oba"
+priority    = 200
+
+match   = "%[MultiSelect($args)]"
+rewrite = []
+
+[pattern.holes.args]
+kind = "expression"

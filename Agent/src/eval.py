@@ -109,19 +109,28 @@ def _sequence_f1(agent_seq: list[str], expected_seq: list[str]) -> tuple[float, 
 def evaluate_output(
     generated_content: str,
     pine_ground_truth_path: Path,
+    *,
+    exclude_createvar: bool = False,
 ) -> dict:
     """Compare tokens extracted from the generated output against the ground truth.
 
     Uses LCS-based sequence F1 so that tokens in the wrong conditional branch
     (e.g. swapped If/Else content) are penalised, not just token presence.
     Also tracks unreplaced legacy %[ tokens as a hard quality signal.
+
+    ``exclude_createvar`` defaults to False now that v2 produces a
+    ``CreateVar`` prelude for child-entity references. Older behaviour
+    (skip CreateVar on both sides) can be opted into for back-compat
+    by passing ``exclude_createvar=True``.
     """
     with open(pine_ground_truth_path, "r") as f:
         expected_seq = [_normalize(t) for t in
-                        extract_pine_fillpoints(f.read(), exclude_createvar=True)]
+                        extract_pine_fillpoints(f.read(),
+                                                exclude_createvar=exclude_createvar)]
 
     agent_seq = [_normalize(t) for t in
-                 extract_pine_fillpoints(generated_content, exclude_createvar=True)]
+                 extract_pine_fillpoints(generated_content,
+                                         exclude_createvar=exclude_createvar)]
 
     precision, recall, f1 = _sequence_f1(agent_seq, expected_seq)
 
@@ -159,7 +168,7 @@ def evaluate_mappings(
     evaluate_output() for end-to-end accuracy.
     """
     with open(pine_ground_truth_path, "r") as f:
-        ground_truth_tokens = extract_pine_fillpoints(f.read(), exclude_createvar=True)
+        ground_truth_tokens = extract_pine_fillpoints(f.read(), exclude_createvar=False)
 
     expected = {_normalize(t) for t in ground_truth_tokens}
 
@@ -265,9 +274,17 @@ def save_eval_results(all_results: list[dict], output_path: Path):
 
 
 def compute_run_summary(all_results: list[dict]) -> dict:
-    """Compute micro and macro aggregate stats for a batch of results."""
+    """Compute micro and macro aggregate stats for a batch of results.
+
+    Always returns the full summary shape (even for an empty batch), so
+    the dashboard can rely on every key being present.
+    """
     if not all_results:
-        return {}
+        return {
+            "micro_recall": 0.0, "micro_precision": 0.0, "micro_f1": 0.0,
+            "macro_recall": 0.0, "macro_precision": 0.0, "macro_f1": 0.0,
+            "total_templates": 0, "total_duration": 0.0,
+        }
 
     total_correct = sum(r["result"]["correct_count"] for r in all_results)
     total_expected = sum(r["result"]["total_expected"] for r in all_results)
