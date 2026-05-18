@@ -29,7 +29,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from pipeline import pipeline
-from pipeline.engine.llm_fallback import LlmFallback, OpenAILlmClient
+from pipeline.engine.llm_converter import LlmConverter, OpenAILlmClient
 from pipeline.engine.validator import errors_only, warnings_only
 from pipeline.grammar.loaders import load_org_overrides
 from pipeline.patterns import loader as pattern_loader
@@ -85,8 +85,8 @@ def _load_grammar_fragment() -> str:
         return ""
 
 
-def _make_llm_fallback(org: str) -> Optional[LlmFallback]:
-    """Construct an ``LlmFallback`` for this conversion if the env is
+def _make_llm_converter(org: str) -> Optional[LlmConverter]:
+    """Construct an ``LlmConverter`` for this conversion if the env is
     set up for it. Returns ``None`` (so the pipeline falls back to
     patterns-only) when:
 
@@ -112,7 +112,7 @@ def _make_llm_fallback(org: str) -> Optional[LlmFallback]:
         org_overrides = load_org_overrides(org) if org != "any" else None
     except Exception:  # noqa: BLE001
         org_overrides = None
-    return LlmFallback(
+    return LlmConverter(
         client=client,
         library=library,
         org_overrides=org_overrides,
@@ -186,7 +186,7 @@ def _result_to_json(result, *, source_rtf: str, source_path: Path) -> dict:
         "totals": {
             "jda_tokens": result.total_jda_tokens,
             "pine_tokens": result.total_pine_tokens,
-            "pattern_segments": result.by_provenance.get(pipeline.PROV_PATTERN, 0),
+            "suggestion_segments": result.by_provenance.get(pipeline.PROV_SUGGESTION, 0),
             "llm_segments": result.by_provenance.get(pipeline.PROV_LLM, 0),
             "unmatched_segments": result.by_provenance.get(pipeline.PROV_UNMATCHED, 0),
             "edit_segments": result.by_provenance.get(pipeline.PROV_EDIT, 0),
@@ -239,8 +239,8 @@ def main(argv=None) -> int:
                    help="print provenance + issues summary to stderr")
     p.add_argument("--quiet", action="store_true")
     p.add_argument("--no-llm", action="store_true",
-                   help="skip the LLM fallback (patterns + accepted "
-                        "suggestions only — useful for offline runs).")
+                   help="skip the LLM converter (accepted suggestions only — "
+                        "useful for offline runs).")
     args = p.parse_args(argv)
 
     if not args.input.exists():
@@ -257,12 +257,8 @@ def main(argv=None) -> int:
     source_rtf = _normalize_rtf(
         args.input.read_text(encoding="utf-8", errors="replace")
     )
-    # Construct the LLM fallback unless explicitly disabled. The GUI's
-    # Convert button hits this code path, so by default we want the LLM
-    # in the loop (the user's accepted edits accumulate as patterns
-    # over time, but everything not yet covered should be the LLM's
-    # output, not unmatched).
-    llm = None if args.no_llm else _make_llm_fallback(args.org)
+    # Construct the LLM converter unless explicitly disabled.
+    llm = None if args.no_llm else _make_llm_converter(args.org)
 
     # Diagnostic line — written to stderr, never to stdout (stdout is
     # the JSON wire format). Surfaces in the Electron dev terminal via
@@ -271,22 +267,22 @@ def main(argv=None) -> int:
     # didn't put OPENAI_API_KEY in env or the user hasn't entered one
     # in Settings.
     if args.no_llm:
-        print("[convert] LLM fallback disabled (--no-llm).", file=sys.stderr)
+        print("[convert] LLM converter disabled (--no-llm).", file=sys.stderr)
     elif llm is not None:
         model = os.environ.get("OPENAI_MODEL", "gpt-5.5")
-        print(f"[convert] LLM fallback ready (model={model}).", file=sys.stderr)
+        print(f"[convert] LLM converter ready (model={model}).", file=sys.stderr)
     else:
         reason = (
             "OPENAI_API_KEY not in env" if not os.environ.get("OPENAI_API_KEY")
             else "openai SDK or org overrides failed to load"
         )
-        print(f"[convert] LLM fallback OFF — {reason}.", file=sys.stderr)
+        print(f"[convert] LLM converter OFF — {reason}.", file=sys.stderr)
 
     try:
         result = pipeline.convert_file(
             args.input, args.org,
             output_path=args.output,
-            llm_fallback=llm,
+            converter=llm,
         )
     except FileNotFoundError as e:
         print(f"file error: {e}", file=sys.stderr)

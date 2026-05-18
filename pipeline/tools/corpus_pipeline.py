@@ -31,7 +31,7 @@ if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
 from pipeline import pipeline
-from pipeline.engine.llm_fallback import AnthropicLlmClient, LlmFallback
+from pipeline.engine.llm_converter import AnthropicLlmClient, LlmConverter
 from pipeline.grammar.loaders import load_org_overrides
 from pipeline.patterns import loader as pattern_loader
 
@@ -56,7 +56,7 @@ def main(argv=None) -> int:
     fb = None
     if args.use_llm:
         client = AnthropicLlmClient()
-        fb = LlmFallback(client=client, library=library, org_overrides=org_overrides)
+        fb = LlmConverter(client=client, library=library, org_overrides=org_overrides)
 
     files = sorted(args.legacy_dir.glob("*.rtf"))
     if args.limit is not None:
@@ -75,7 +75,7 @@ def main(argv=None) -> int:
                 rtf, org=args.org,
                 library=library,
                 org_overrides=org_overrides,
-                llm_fallback=fb,
+                converter=fb,
             )
         except Exception as e:  # noqa: BLE001
             print(f"    ERROR: {e}", file=sys.stderr)

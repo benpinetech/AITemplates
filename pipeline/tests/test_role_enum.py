@@ -88,11 +88,11 @@ class TestRenderForPrompt:
 
 class TestPromptIntegration:
     def test_enum_appears_in_single_token_prompt(self):
-        from pipeline.engine.llm_fallback import FallbackRequest
+        from pipeline.engine.llm_converter import ConversionRequest
         from pipeline.parser import jda_parser
         from pipeline.grammar.loaders import OrgVocabulary
         vocab = OrgVocabulary(entities=[], builtins=[], prompt_variables=[])
-        req = FallbackRequest(
+        req = ConversionRequest(
             jda_token=jda_parser.parse("%[Anything.X]"),
             org="oba",
             vocabulary=vocab,
@@ -103,11 +103,11 @@ class TestPromptIntegration:
         assert "RESPONDENT" in prompt
 
     def test_enum_appears_in_batch_prompt(self):
-        from pipeline.engine.llm_fallback import BatchFallbackRequest
+        from pipeline.engine.llm_converter import BatchConversionRequest
         from pipeline.parser import jda_parser
         from pipeline.grammar.loaders import OrgVocabulary
         vocab = OrgVocabulary(entities=[], builtins=[], prompt_variables=[])
-        req = BatchFallbackRequest(
+        req = BatchConversionRequest(
             jda_tokens=(jda_parser.parse("%[Anything.X]"),),
             org="oba",
             vocabulary=vocab,

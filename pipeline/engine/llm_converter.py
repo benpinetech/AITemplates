@@ -1,6 +1,6 @@
-"""LLM fallback for chunks the pattern engine doesn't match.
+"""LLM converter — core conversion engine for JDA → Pine translation.
 
-The fallback runs on AST-only inputs — never prose. The prompt the
+The converter runs on AST-only inputs — never prose. The prompt the
 LLM sees is assembled from four constrained sources:
 
   1. The unmatched JDA token's text (its ``.unparse()``).
@@ -15,17 +15,17 @@ This file ships:
   - ``MockLlmClient`` — canned-response client for tests.
   - ``AnthropicLlmClient`` — adapter for the Anthropic SDK,
     activated only when the SDK is importable AND an API key is set.
-  - ``FallbackRequest`` — immutable bundle of (input + context),
+  - ``ConversionRequest`` — immutable bundle of (input + context),
     with ``assemble_prompt()`` and ``parse_response()`` methods that
     are unit-testable independently of any real LLM.
-  - ``LlmFallback`` — top-level callable. Holds the client and the
+  - ``LlmConverter`` — top-level callable. Holds the client and the
     static context (library, vocabulary), produces ``PineToken``
     outputs (or None when parsing fails).
 
 The privacy invariant — "the prompt contains only AST, vocabulary,
 patterns, grammar, and the constant framing text" — is enforced
 structurally by ``assemble_prompt()`` (it doesn't take any other
-inputs). A test in ``test_engine_llm_fallback.py`` audits the
+inputs). A test in ``test_engine_llm_converter.py`` audits the
 assembled prompt for an expected shape.
 """
 
@@ -54,7 +54,7 @@ class LlmClient(Protocol):
     """Minimal interface a client must implement.
 
     A complete prompt goes in; a single string response comes out. The
-    LlmFallback layer handles parsing the response into a PineToken
+    LlmConverter layer handles parsing the response into a PineToken
     and returns None if parsing fails.
     """
 
@@ -258,7 +258,7 @@ class OpenAILlmClient:
 # RAG search tool — port of v1's search_pine_syntax
 # ─────────────────────────────────────────────────────────────────────────────
 # Lazy-loaded singleton: building / loading the chroma DB is slow and
-# every LlmFallback instance shares the same backing store.
+# every LlmConverter instance shares the same backing store.
 
 _RAG_DB = None
 _RAG_DB_LOAD_FAILED = False
@@ -520,7 +520,7 @@ def _document_context_summary(
 
 
 @dataclass(frozen=True)
-class FallbackRequest:
+class ConversionRequest:
     """One LLM request, fully assembled. ``assemble_prompt()`` is
     deterministic — same fields produce the same prompt — which makes
     the privacy and shape invariants testable."""
@@ -643,7 +643,7 @@ class FallbackRequest:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Batched fallback request — all unmapped tokens of one document in one call
+# Batched conversion request — all tokens of one document in one call
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -671,10 +671,10 @@ _SECTION_BATCH_OUTPUTS = (
 
 
 @dataclass(frozen=True)
-class BatchFallbackRequest:
+class BatchConversionRequest:
     """One LLM request that translates many JDA tokens at once.
 
-    Mirrors :class:`FallbackRequest`, but the variable suffix is a
+    Mirrors :class:`ConversionRequest`, but the variable suffix is a
     numbered LIST of input tokens instead of one. The response format
     is a numbered list of Pine outputs in matching order; each output
     slot can contain multiple Pine tokens (so `bare X.FullName` →
@@ -843,7 +843,7 @@ class BatchFallbackRequest:
             for s in tokens:
                 if not isinstance(s, str) or not s.strip():
                     continue
-                tok = FallbackRequest.parse_response(s)
+                tok = ConversionRequest.parse_response(s)
                 if tok is not None:
                     parsed.append(tok)
             out[slot - 1] = parsed
@@ -1029,11 +1029,11 @@ def _extract_retry_candidates(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Top-level fallback
+# Top-level converter
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-class LlmFallback:
+class LlmConverter:
     """Convert one unmatched JDA token via the LLM.
 
     Construct once with the static library + org override; call
@@ -1060,7 +1060,7 @@ class LlmFallback:
         # tuple-ize so the field can sit on the frozen request dataclass.
         self._shape_examples = tuple((m, r) for (m, r) in shape_examples)
 
-    def build_request(self, jda_token: JdaToken) -> FallbackRequest:
+    def build_request(self, jda_token: JdaToken) -> ConversionRequest:
         # When the caller passes ``org="any"`` the pipeline gives us
         # ``org_overrides=None``. Fall back to a generic identity and
         # an empty vocabulary so the LLM still gets few-shots and
@@ -1076,7 +1076,7 @@ class LlmFallback:
             org_id,
             k=self._few_shot_count,
         )
-        return FallbackRequest(
+        return ConversionRequest(
             jda_token=jda_token,
             org=org_id,
             vocabulary=vocabulary,
@@ -1089,14 +1089,14 @@ class LlmFallback:
         req = self.build_request(jda_token)
         prompt = req.assemble_prompt()
         response = self._client.complete(prompt)
-        return FallbackRequest.parse_response(response)
+        return ConversionRequest.parse_response(response)
 
     def build_batch_request(
         self,
         jda_tokens: Sequence[JdaToken],
         template_name: Optional[str] = None,
         contexts: Optional[Sequence[tuple]] = None,
-    ) -> "BatchFallbackRequest":
+    ) -> "BatchConversionRequest":
         org_id = self._org.id if self._org is not None else "any"
         vocabulary = (
             self._org.vocabulary if self._org is not None
@@ -1117,7 +1117,7 @@ class LlmFallback:
                     break
             if len(merged) >= self._few_shot_count * 2:
                 break
-        return BatchFallbackRequest(
+        return BatchConversionRequest(
             jda_tokens=tuple(jda_tokens),
             org=org_id,
             vocabulary=vocabulary,
@@ -1214,13 +1214,13 @@ class LlmFallback:
         # list parser if the model returned non-JSON (older models that
         # rejected ``response_format`` and the client dropped it).
         n = len(jda_tokens)
-        parsed = BatchFallbackRequest.parse_json_response(response, n)
+        parsed = BatchConversionRequest.parse_json_response(response, n)
         # Slots the LLM explicitly returned as ``[]`` — intentional
         # drops (e.g., %[<X>.Title]). Captured BEFORE retry so a retry
         # for an unrelated slot doesn't overwrite the drop signal.
-        drop_slots = BatchFallbackRequest.parse_json_drops(response, n)
+        drop_slots = BatchConversionRequest.parse_json_drops(response, n)
         if not any(parsed):
-            parsed = BatchFallbackRequest.parse_batch_response(response, n)
+            parsed = BatchConversionRequest.parse_batch_response(response, n)
 
         # Validate-and-retry. For each slot the parser emitted as
         # empty even though the LLM clearly *tried* (it sent
@@ -1318,7 +1318,7 @@ class LlmFallback:
         else:
             response = self._client.complete(prompt)
         n_sub = len(sub_tokens)
-        out = BatchFallbackRequest.parse_json_response(response, n_sub)
+        out = BatchConversionRequest.parse_json_response(response, n_sub)
         if not any(out):
-            out = BatchFallbackRequest.parse_batch_response(response, n_sub)
+            out = BatchConversionRequest.parse_batch_response(response, n_sub)
         return out

@@ -10,16 +10,16 @@ from __future__ import annotations
 
 import pytest
 
-from pipeline.engine.llm_fallback import (
-    FallbackRequest,
-    LlmFallback,
+from pipeline.engine.llm_converter import (
+    ConversionRequest,
+    LlmConverter,
     MockLlmClient,
     _select_few_shot,
     _similarity,
 )
 from pipeline.grammar.loaders import load_org_overrides
 from pipeline.parser import jda_parser, pine_parser
-from pipeline.patterns import loader as pattern_loader
+from pipeline.patterns.schema import Pattern
 
 
 @pytest.fixture(scope="module")
@@ -29,16 +29,37 @@ def oba():
 
 @pytest.fixture(scope="module")
 def library():
-    report = pattern_loader.load_library()
-    report.raise_if_issues()
-    return report.patterns
+    return []
+
+
+@pytest.fixture(scope="module")
+def few_shot_patterns():
+    """Minimal synthetic Pattern objects for few-shot tests."""
+    return [
+        Pattern(
+            id="syn_fullname",
+            description="synthetic few-shot",
+            match="%[TitleCase(JW_Respondent.FullName)]",
+            rewrite="@[Respondent.first.FormatName(F L).SetCasing(Title)]",
+        ),
+        Pattern(
+            id="syn_dollar_hole",
+            description="synthetic pattern with $-hole",
+            match="%[TitleCase($entity.FullName)]",
+            rewrite="@[$entity_pine.first.FormatName(F L).SetCasing(Title)]",
+            holes={
+                "entity": {"kind": "path-segment"},
+                "entity_pine": {"derive_from": "entity", "transform": "translate_jda_entity_to_pine"},
+            },
+        ),
+    ]
 
 
 # ─── prompt assembly ──────────────────────────────────────────────────────
 
 class TestPromptAssembly:
     def test_contains_input_section(self, oba):
-        req = FallbackRequest(
+        req = ConversionRequest(
             jda_token=jda_parser.parse("%[TitleCase(JW_Respondent.FullName)]"),
             org="oba",
             vocabulary=oba.vocabulary,
@@ -48,7 +69,7 @@ class TestPromptAssembly:
         assert "%[TitleCase(JW_Respondent.FullName)]" in prompt
 
     def test_contains_vocabulary(self, oba):
-        req = FallbackRequest(
+        req = ConversionRequest(
             jda_token=jda_parser.parse("%[Mystery]"),
             org="oba",
             vocabulary=oba.vocabulary,
@@ -58,43 +79,40 @@ class TestPromptAssembly:
         assert "Respondent" in prompt
         assert "ALLOWED PINE VOCABULARY" in prompt
 
-    def test_includes_few_shot_examples(self, oba, library):
-        req = FallbackRequest(
+    def test_includes_few_shot_examples(self, oba, few_shot_patterns):
+        p = few_shot_patterns[0]
+        req = ConversionRequest(
             jda_token=jda_parser.parse("%[TitleCase(JW_Respondent.FullName)]"),
             org="oba",
             vocabulary=oba.vocabulary,
-            few_shot=library[:2],
+            few_shot=[p],
         )
         prompt = req.assemble_prompt()
-        # Both pattern matches should appear in the prompt.
-        assert library[0].match in prompt or library[0].match.split('\n')[0] in prompt or any(
-            m in prompt for m in (library[0].match if isinstance(library[0].match, list) else [library[0].match])
+        assert p.match in prompt or any(
+            m in prompt for m in (p.match if isinstance(p.match, list) else [p.match])
         )
 
-    def test_few_shot_strips_dollar_holes(self, oba, library):
+    def test_few_shot_strips_dollar_holes(self, oba, few_shot_patterns):
         """Pattern source uses ``$entity`` to mark holes. The LLM
         prompt must not contain ``$entity`` because the model will
         echo the dollar back into Pine output. Replacement is
         ``<entity>`` so the model recognises it as a placeholder."""
-        # Pick a pattern that actually has $-holes in its source.
-        holed = next(p for p in library if isinstance(p.match, str) and "$" in p.match)
-        req = FallbackRequest(
+        holed = few_shot_patterns[1]   # the synthetic pattern with $-holes
+        req = ConversionRequest(
             jda_token=jda_parser.parse("%[TitleCase(JW_Respondent.FullName)]"),
             org="oba",
             vocabulary=oba.vocabulary,
             few_shot=[holed],
         )
         prompt = req.assemble_prompt()
-        # No $-prefixed identifiers anywhere in the prompt.
         import re
         assert re.search(r"\$[a-zA-Z_]", prompt) is None, (
             f"Prompt still contains $-holes:\n{prompt}"
         )
-        # Replacement is angle-bracket placeholders.
         assert "<entity>" in prompt or "<" in prompt
 
     def test_grammar_fragment_appended(self, oba):
-        req = FallbackRequest(
+        req = ConversionRequest(
             jda_token=jda_parser.parse("%[Mystery]"),
             org="oba",
             vocabulary=oba.vocabulary,
@@ -124,7 +142,7 @@ class TestPrivacyInvariant:
         # The token unparses to a specific string; vocab and few-shot
         # are explicit. No prose should leak in.
         token = jda_parser.parse("%[TitleCase(JW_Respondent.FullName)]")
-        req = FallbackRequest(
+        req = ConversionRequest(
             jda_token=token,
             org="oba",
             vocabulary=oba.vocabulary,
@@ -140,7 +158,7 @@ class TestPrivacyInvariant:
 
     def test_prompt_assembly_is_deterministic(self, oba):
         token = jda_parser.parse("%[Initials(Cust_OBAAttorney.FullName, false)]")
-        req = FallbackRequest(
+        req = ConversionRequest(
             jda_token=token,
             org="oba",
             vocabulary=oba.vocabulary,
@@ -155,7 +173,7 @@ class TestPrivacyInvariant:
         # The universal role enum + vocabulary + few-shot carry the
         # same info more generally. See LLM_CAPABILITY_FINDINGS.md.
         token = jda_parser.parse("%[Cust_Complainant.FullName]")
-        req = FallbackRequest(jda_token=token, org="oba", vocabulary=oba.vocabulary)
+        req = ConversionRequest(jda_token=token, org="oba", vocabulary=oba.vocabulary)
         prompt = req.assemble_prompt()
         assert "TRANSLATION RULES" not in prompt
         # Role enum still carries the entity vocabulary the rules used to enumerate.
@@ -167,7 +185,7 @@ class TestPrivacyInvariant:
         # entity hints (``ENTITY HINT``) still surface known renames
         # for the specific token being translated.
         token = jda_parser.parse("%[Cust_Complainant_Address.City]")
-        req = FallbackRequest(jda_token=token, org="oba", vocabulary=oba.vocabulary)
+        req = ConversionRequest(jda_token=token, org="oba", vocabulary=oba.vocabulary)
         prompt = req.assemble_prompt()
         assert "JDA → PINE ENTITY TRANSLATION TABLE" not in prompt
         # The per-input hint still resolves the leading entity.
@@ -179,7 +197,7 @@ class TestPrivacyInvariant:
         # When the input's leading entity is in the table, the prompt
         # adds a per-call hint pointing the LLM at the right Pine entity.
         token = jda_parser.parse("%[Cust_RespondentAtty.LastName]")
-        req = FallbackRequest(jda_token=token, org="oba", vocabulary=oba.vocabulary)
+        req = ConversionRequest(jda_token=token, org="oba", vocabulary=oba.vocabulary)
         prompt = req.assemble_prompt()
         assert "ENTITY HINT" in prompt
         # The hint pairs the JDA name with its Pine target.
@@ -189,18 +207,18 @@ class TestPrivacyInvariant:
 
     def test_prompt_omits_hint_for_unknown_entity(self, oba):
         token = jda_parser.parse("%[MysteryEntity.SomeField]")
-        req = FallbackRequest(jda_token=token, org="oba", vocabulary=oba.vocabulary)
+        req = ConversionRequest(jda_token=token, org="oba", vocabulary=oba.vocabulary)
         prompt = req.assemble_prompt()
         assert "ENTITY HINT" not in prompt
 
     def test_batch_prompt_lists_inputs_in_order(self, oba):
-        from pipeline.engine.llm_fallback import BatchFallbackRequest
+        from pipeline.engine.llm_converter import BatchConversionRequest
         toks = [
             jda_parser.parse("%[Cust_Complainant.FullName]"),
             jda_parser.parse("%[Cust_Complainant_Address.City]"),
             jda_parser.parse("%[TitleCase(JW_Atty_Pros_Active.FullName)]"),
         ]
-        req = BatchFallbackRequest(
+        req = BatchConversionRequest(
             jda_tokens=tuple(toks), org="oba", vocabulary=oba.vocabulary,
         )
         prompt = req.assemble_batch_prompt()
@@ -216,7 +234,7 @@ class TestPrivacyInvariant:
         assert "for input 3" in hint_section
 
     def test_classify_audience_from_filename_to_c(self, oba):
-        from pipeline.engine.llm_fallback import classify_document_audience
+        from pipeline.engine.llm_converter import classify_document_audience
         from pipeline.patterns.transforms import _JDA_TO_PINE_ENTITY
         # Filename signal trumps token frequency
         assert classify_document_audience(
@@ -230,7 +248,7 @@ class TestPrivacyInvariant:
         ) == "complainant"
 
     def test_classify_audience_from_filename_to_r(self, oba):
-        from pipeline.engine.llm_fallback import classify_document_audience
+        from pipeline.engine.llm_converter import classify_document_audience
         from pipeline.patterns.transforms import _JDA_TO_PINE_ENTITY
         assert classify_document_audience(
             "R Offer PR.rtf", [], _JDA_TO_PINE_ENTITY,
@@ -246,7 +264,7 @@ class TestPrivacyInvariant:
         ) == "respondent"
 
     def test_classify_audience_from_token_frequency(self):
-        from pipeline.engine.llm_fallback import classify_document_audience
+        from pipeline.engine.llm_converter import classify_document_audience
         from pipeline.patterns.transforms import _JDA_TO_PINE_ENTITY
         # No filename → fall back to token counts
         complainant_heavy = [
@@ -270,7 +288,7 @@ class TestPrivacyInvariant:
         ) == "respondent"
 
     def test_classify_audience_returns_none_when_balanced(self):
-        from pipeline.engine.llm_fallback import classify_document_audience
+        from pipeline.engine.llm_converter import classify_document_audience
         from pipeline.patterns.transforms import _JDA_TO_PINE_ENTITY
         balanced = [
             jda_parser.parse("%[Cust_Complainant.FullName]"),
@@ -284,7 +302,7 @@ class TestPrivacyInvariant:
         ) is None
 
     def test_classify_audience_returns_none_for_too_few_tokens(self):
-        from pipeline.engine.llm_fallback import classify_document_audience
+        from pipeline.engine.llm_converter import classify_document_audience
         from pipeline.patterns.transforms import _JDA_TO_PINE_ENTITY
         # Below the min-tokens threshold (3)
         assert classify_document_audience(
@@ -295,9 +313,9 @@ class TestPrivacyInvariant:
         ) is None
 
     def test_batch_prompt_includes_audience_when_classifiable(self, oba):
-        from pipeline.engine.llm_fallback import BatchFallbackRequest
+        from pipeline.engine.llm_converter import BatchConversionRequest
         toks = [jda_parser.parse("%[Cust_Complainant.FullName]")]
-        req = BatchFallbackRequest(
+        req = BatchConversionRequest(
             jda_tokens=tuple(toks), org="oba", vocabulary=oba.vocabulary,
             template_name="C Offer PR.rtf",
         )
@@ -307,9 +325,9 @@ class TestPrivacyInvariant:
         assert "Complainant" in section
 
     def test_batch_prompt_omits_audience_when_unclear(self, oba):
-        from pipeline.engine.llm_fallback import BatchFallbackRequest
+        from pipeline.engine.llm_converter import BatchConversionRequest
         toks = [jda_parser.parse("%[SomethingObscure.Field]")]
-        req = BatchFallbackRequest(
+        req = BatchConversionRequest(
             jda_tokens=tuple(toks), org="oba", vocabulary=oba.vocabulary,
             # No filename and tokens don't classify
         )
@@ -317,7 +335,7 @@ class TestPrivacyInvariant:
         assert "DOCUMENT AUDIENCE" not in prompt
 
     def test_batch_prompt_includes_document_context(self, oba):
-        from pipeline.engine.llm_fallback import BatchFallbackRequest
+        from pipeline.engine.llm_converter import BatchConversionRequest
         # 3 Complainant tokens, 1 Respondent token → Complainant should
         # be flagged as the dominant entity in the doc-context section.
         toks = [
@@ -326,7 +344,7 @@ class TestPrivacyInvariant:
             jda_parser.parse("%[Cust_Complainant_Address.City]"),
             jda_parser.parse("%[JW_Respondent.FullName]"),
         ]
-        req = BatchFallbackRequest(
+        req = BatchConversionRequest(
             jda_tokens=tuple(toks), org="oba", vocabulary=oba.vocabulary,
         )
         prompt = req.assemble_batch_prompt()
@@ -345,13 +363,13 @@ class TestPrivacyInvariant:
         assert c_count > r_count
 
     def test_batch_response_parsing_simple(self):
-        from pipeline.engine.llm_fallback import BatchFallbackRequest
+        from pipeline.engine.llm_converter import BatchConversionRequest
         resp = (
             "1. @[Complainant.first.NameFirstName] @[Complainant.first.NameLastName]\n"
             "2. @[ComplainantAddress.first.City]\n"
             "3. @[Prosecutor.first.FormatName(F L).SetCasing(Title)]\n"
         )
-        out = BatchFallbackRequest.parse_batch_response(resp, 3)
+        out = BatchConversionRequest.parse_batch_response(resp, 3)
         assert len(out) == 3
         assert [t.unparse() for t in out[0]] == [
             "@[Complainant.first.NameFirstName]",
@@ -361,39 +379,39 @@ class TestPrivacyInvariant:
         assert [t.unparse() for t in out[2]] == ["@[Prosecutor.first.FormatName(F L).SetCasing(Title)]"]
 
     def test_batch_response_parsing_no_mapping_slot(self):
-        from pipeline.engine.llm_fallback import BatchFallbackRequest
+        from pipeline.engine.llm_converter import BatchConversionRequest
         resp = (
             "1. @[Respondent.first.NameLastName]\n"
             "2. <no mapping found>\n"
             "3. @[Complainant.first.NameLastName]\n"
         )
-        out = BatchFallbackRequest.parse_batch_response(resp, 3)
+        out = BatchConversionRequest.parse_batch_response(resp, 3)
         assert len(out) == 3
         assert len(out[0]) == 1
         assert out[1] == []          # no Pine tokens for slot 2
         assert len(out[2]) == 1
 
     def test_batch_response_parsing_tolerates_missing_slots(self):
-        from pipeline.engine.llm_fallback import BatchFallbackRequest
+        from pipeline.engine.llm_converter import BatchConversionRequest
         # LLM might skip slot 2 entirely.
         resp = (
             "1. @[Respondent.first.NameLastName]\n"
             "3. @[Complainant.first.NameLastName]\n"
         )
-        out = BatchFallbackRequest.parse_batch_response(resp, 3)
+        out = BatchConversionRequest.parse_batch_response(resp, 3)
         assert len(out) == 3
         assert len(out[0]) == 1
         assert out[1] == []          # missing slot
         assert len(out[2]) == 1
 
     def test_batch_convert_via_mock_client(self, oba):
-        from pipeline.engine.llm_fallback import LlmFallback, MockLlmClient
+        from pipeline.engine.llm_converter import LlmConverter, MockLlmClient
         canned = (
             "1. @[Complainant.first.NameFirstName] @[Complainant.first.NameLastName]\n"
             "2. @[ComplainantAddress.first.City]\n"
         )
         client = MockLlmClient(lambda prompt: canned)
-        fb = LlmFallback(client=client, library=[], org_overrides=oba)
+        fb = LlmConverter(client=client, library=[], org_overrides=oba)
         toks = [
             jda_parser.parse("%[Cust_Complainant.FullName]"),
             jda_parser.parse("%[Cust_Complainant_Address.City]"),
@@ -407,8 +425,8 @@ class TestPrivacyInvariant:
         assert [t.unparse() for t in out[1]] == ["@[ComplainantAddress.first.City]"]
 
     def test_batch_convert_empty_returns_empty(self, oba):
-        from pipeline.engine.llm_fallback import LlmFallback, MockLlmClient
-        fb = LlmFallback(
+        from pipeline.engine.llm_converter import LlmConverter, MockLlmClient
+        fb = LlmConverter(
             client=MockLlmClient(lambda p: ""),
             library=[], org_overrides=oba,
         )
@@ -419,12 +437,12 @@ class TestPrivacyInvariant:
         # rules+vocab+entity-table section identical between calls so
         # the cache hits. Verify by comparing the prefix up to the
         # variable section (FEWSHOT / HINT / INPUT).
-        a = FallbackRequest(
+        a = ConversionRequest(
             jda_token=jda_parser.parse("%[Cust_Complainant.LastName]"),
             org="oba",
             vocabulary=oba.vocabulary,
         ).assemble_prompt()
-        b = FallbackRequest(
+        b = ConversionRequest(
             jda_token=jda_parser.parse("%[JW_Respondent.FullName]"),
             org="oba",
             vocabulary=oba.vocabulary,
@@ -440,7 +458,7 @@ class TestPrivacyInvariant:
         # appears in exactly one place: the INPUT section. (Rule
         # examples may legitimately mention other paths.)
         token = jda_parser.parse("%[Subdocument(MysteryPath\\NotInRules)]")
-        req = FallbackRequest(
+        req = ConversionRequest(
             jda_token=token,
             org="oba",
             vocabulary=oba.vocabulary,
@@ -453,7 +471,7 @@ class TestPrivacyInvariant:
 
 class TestResponseParsing:
     def test_clean_response(self):
-        out = FallbackRequest.parse_response("@[Respondent.first.NameLastName]")
+        out = ConversionRequest.parse_response("@[Respondent.first.NameLastName]")
         assert out is not None
         assert out.unparse() == "@[Respondent.first.NameLastName]"
 
@@ -465,27 +483,27 @@ class TestResponseParsing:
             "@[Respondent.first.NameLastName]\n"
             "Hope that helps."
         )
-        out = FallbackRequest.parse_response(text)
+        out = ConversionRequest.parse_response(text)
         assert out is not None
         assert out.unparse() == "@[Respondent.first.NameLastName]"
 
     def test_response_in_code_fence(self):
         text = "```\n@[Respondent.first.NameLastName]\n```"
-        out = FallbackRequest.parse_response(text)
+        out = ConversionRequest.parse_response(text)
         assert out is not None
         assert out.unparse() == "@[Respondent.first.NameLastName]"
 
     def test_unbalanced_brackets_returns_none(self):
-        out = FallbackRequest.parse_response("@[Respondent.first.NameLastName")
+        out = ConversionRequest.parse_response("@[Respondent.first.NameLastName")
         assert out is None
 
     def test_unparseable_returns_none(self):
-        out = FallbackRequest.parse_response("@[--nonsense--]")
+        out = ConversionRequest.parse_response("@[--nonsense--]")
         # Pine parser rejects this; fallback returns None.
         assert out is None
 
     def test_no_pine_token_returns_none(self):
-        out = FallbackRequest.parse_response("Sorry, I can't help with that.")
+        out = ConversionRequest.parse_response("Sorry, I can't help with that.")
         assert out is None
 
 
@@ -523,19 +541,19 @@ class TestEndToEnd:
             "TitleCase(JW_Respondent.FullName)":
                 "@[Respondent.first.FormatName(F L).SetCasing(Title)]",
         })
-        fb = LlmFallback(client=client, library=library, org_overrides=oba)
+        fb = LlmConverter(client=client, library=library, org_overrides=oba)
         out = fb.convert(jda_parser.parse("%[TitleCase(JW_Respondent.FullName)]"))
         assert out is not None
         assert out.unparse() == "@[Respondent.first.FormatName(F L).SetCasing(Title)]"
 
     def test_mock_unparseable_response_returns_none(self, library, oba):
         client = MockLlmClient(lambda prompt: "I'm not sure how to convert this.")
-        fb = LlmFallback(client=client, library=library, org_overrides=oba)
+        fb = LlmConverter(client=client, library=library, org_overrides=oba)
         out = fb.convert(jda_parser.parse("%[Mystery]"))
         assert out is None
 
-    def test_build_request_attaches_few_shot(self, library, oba):
+    def test_build_request_attaches_few_shot(self, few_shot_patterns, oba):
         client = MockLlmClient(lambda prompt: "@[Respondent.first.NameLastName]")
-        fb = LlmFallback(client=client, library=library, org_overrides=oba)
+        fb = LlmConverter(client=client, library=few_shot_patterns, org_overrides=oba)
         req = fb.build_request(jda_parser.parse("%[TitleCase(JW_Respondent.FullName)]"))
         assert len(req.few_shot) > 0

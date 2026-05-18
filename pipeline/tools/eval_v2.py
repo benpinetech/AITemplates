@@ -48,7 +48,7 @@ except ImportError:
 
 from pipeline import pipeline
 from pipeline.engine import suggestion_store
-from pipeline.engine.llm_fallback import LlmFallback, OpenAILlmClient
+from pipeline.engine.llm_converter import LlmConverter, OpenAILlmClient
 from pipeline.grammar.loaders import load_org_overrides
 from pipeline.parser import rtf_extractor
 from pipeline.patterns import loader as pattern_loader
@@ -75,12 +75,12 @@ RUNS_DIR = AGENT_DIR / "eval_runs"
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-class _AutoAcceptingLlmFallback:
-    """Decorator around ``LlmFallback`` that persists every successful
+class _AutoAcceptingConverter:
+    """Decorator around ``LlmConverter`` that persists every successful
     conversion as a verified pattern. Behaves exactly like the wrapped
     fallback for callers; the side effect is the autocaching."""
 
-    def __init__(self, inner: LlmFallback, org: str, source_template: str):
+    def __init__(self, inner: LlmConverter, org: str, source_template: str):
         self._inner = inner
         self._org = org
         self._source = source_template
@@ -174,12 +174,12 @@ def run_eval(
 
     # Build a base LLM client we reuse for every template (one OpenAI
     # client is fine; SDK is thread-safe enough for sequential calls).
-    base_fb: Optional[LlmFallback] = None
+    base_fb: Optional[LlmConverter] = None
     if use_llm:
         if not api_key:
             raise RuntimeError("--use-llm requires --api-key or OPENAI_API_KEY")
         client = OpenAILlmClient(api_key=api_key)
-        base_fb = LlmFallback(client=client, library=library, org_overrides=org_overrides)
+        base_fb = LlmConverter(client=client, library=library, org_overrides=org_overrides)
 
     legacy_files = sorted(legacy_dir.glob("*.rtf"), reverse=reverse)
     # Auto-skip "broken" templates: legacy with zero JDA tokens (RTF
@@ -246,7 +246,7 @@ def run_eval(
         ground_truth = pine_file.read_text(encoding="utf-8", errors="replace")
 
         fb_for_this = (
-            _AutoAcceptingLlmFallback(base_fb, org, legacy_file.name)
+            _AutoAcceptingConverter(base_fb, org, legacy_file.name)
             if (auto_accept and base_fb is not None) else base_fb
         )
 
@@ -268,7 +268,7 @@ def run_eval(
             legacy_rtf, org=org,
             library=library_for_this,
             org_overrides=org_overrides,
-            llm_fallback=fb_for_this,
+            converter=fb_for_this,
             template_name=legacy_file.name,
         )
         duration = time.perf_counter() - t0
@@ -282,7 +282,7 @@ def run_eval(
         eval_result["v2_pattern_segments"] = prov[pipeline.PROV_PATTERN]
         eval_result["v2_llm_segments"] = prov[pipeline.PROV_LLM]
         eval_result["v2_unmatched_segments"] = prov[pipeline.PROV_UNMATCHED]
-        if isinstance(fb_for_this, _AutoAcceptingLlmFallback):
+        if isinstance(fb_for_this, _AutoAcceptingConverter):
             eval_result["v2_llm_calls"] = fb_for_this.calls
             eval_result["v2_llm_seconds"] = round(fb_for_this.seconds, 3)
             eval_result["v2_llm_accepted"] = fb_for_this.accepted

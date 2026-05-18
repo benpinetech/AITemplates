@@ -1,25 +1,24 @@
-"""Phase 5 — end-to-end conversion pipeline.
+"""End-to-end conversion pipeline.
 
 Public entry point: ``convert_template(rtf, org, ...) -> ConversionResult``.
 
-The pipeline glues together every earlier phase:
+The pipeline glues together every phase:
 
-    rtf  ──Phase 1── extract bracketed expressions with positions
-                    ↓
-                    Phase 2/2.5/2.6 — pattern engine over the token stream
-                    ↓
-                    Phase 4 — LLM fallback for unmatched segments (optional)
-                    ↓
-                    Phase 4 — validator over the combined Pine output
-                    ↓
-                    Phase 5 — RTF reconstruction (replaces bracketed regions
-                                only; prose untouched)
+    rtf  ── normalize + branch-swap
+            ↓
+            extract bracketed expressions with positions
+            ↓
+            LLM converter over all tokens (optional)
+            ↓
+            validator over the combined Pine output
+            ↓
+            RTF reconstruction (replaces bracketed regions only; prose untouched)
 
 Each output segment carries provenance so the diff UI can show "this
-chunk matched pattern X" / "this came from LLM fallback" / "this is
-still unmatched". The privacy boundary (no prose to the LLM) is
-preserved end-to-end: only bracketed expressions plus the org's
-vocabulary and grammar fragments ever cross into the LLM call.
+came from the LLM" / "this is still unmatched". The privacy boundary
+(no prose to the LLM) is preserved end-to-end: only bracketed
+expressions plus the org's vocabulary and grammar fragments ever cross
+into the LLM call.
 
 Org context is required. Pass ``org="oba"`` for OBA conversions; pass
 ``org="any"`` only for tests / org-agnostic pipelines.
@@ -35,15 +34,12 @@ from typing import List, Optional, Sequence, Tuple
 from .engine import suggestion_store
 from .engine import prelude as prelude_module
 from .engine.audience import classify_document_audience
-from .engine.llm_fallback import LlmFallback
+from .engine.llm_converter import LlmConverter
 from .engine.validator import ValidationIssue, Validator
 from .grammar.loaders import OrgRoot, load_org_overrides
 from .parser import branch_swap, rtf_extractor
 from .parser.jda_ast import JdaToken
 from .parser.pine_ast import PineToken
-from .patterns import engine as patterns_engine
-from .patterns import loader as pattern_loader
-from .patterns.engine import StreamSegment
 from .patterns.schema import Pattern
 
 
@@ -78,23 +74,21 @@ def _strip_rtf_for_context(s: str) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-PROV_PATTERN = "pattern"
-PROV_LLM = "llm-fallback"
+PROV_SUGGESTION = "suggestion"   # matched a user-accepted (HITL) saved mapping
+PROV_LLM = "llm"
 PROV_UNMATCHED = "unmatched"
 PROV_EDIT = "edit"
 
 
 @dataclass(frozen=True)
 class ConversionSegment:
-    """One contiguous slice of the conversion result. Mirrors a
-    :class:`StreamSegment` plus the source RTF byte range and any
-    validation issues attached to this segment's outputs."""
+    """One contiguous slice of the conversion result."""
 
     source_start_byte: int           # inclusive
     source_end_byte: int             # exclusive
     source_jda_tokens: Tuple[JdaToken, ...]
     pine_outputs: Tuple[PineToken, ...]
-    provenance: str                  # PROV_PATTERN | PROV_LLM | PROV_UNMATCHED
+    provenance: str                  # PROV_SUGGESTION | PROV_LLM | PROV_UNMATCHED | PROV_EDIT
     pattern: Optional[Pattern] = None
     issues: Tuple[ValidationIssue, ...] = ()
 
@@ -141,7 +135,7 @@ class ConversionResult:
     @property
     def by_provenance(self) -> dict:
         """How many segments produced output via each provenance class."""
-        out = {PROV_PATTERN: 0, PROV_LLM: 0, PROV_UNMATCHED: 0, PROV_EDIT: 0}
+        out = {PROV_SUGGESTION: 0, PROV_LLM: 0, PROV_UNMATCHED: 0, PROV_EDIT: 0}
         for s in self.segments:
             out[s.provenance] = out.get(s.provenance, 0) + 1
         return out
@@ -150,7 +144,7 @@ class ConversionResult:
         prov = self.by_provenance
         return (
             f"org={self.org!r}  "
-            f"pattern={prov[PROV_PATTERN]}  "
+            f"saved={prov[PROV_SUGGESTION]}  "
             f"llm={prov[PROV_LLM]}  "
             f"unmatched={prov[PROV_UNMATCHED]}  "
             f"edit={prov[PROV_EDIT]}  "
@@ -254,7 +248,7 @@ def convert_template(
     library: Optional[List[Pattern]] = None,
     org_overrides: Optional[OrgRoot] = None,
     validator: Optional[Validator] = None,
-    llm_fallback: Optional[LlmFallback] = None,
+    converter: Optional[LlmConverter] = None,
     include_verified_suggestions: bool = True,
     suggestions_root: Optional[Path] = None,
     template_name: Optional[str] = None,
@@ -265,29 +259,27 @@ def convert_template(
     ``org`` is required — Phase 5 enforces explicit declaration. Inferring
     org from JDA entity prefixes is a future convenience layer.
 
-    All four optional dependencies (library, org_overrides, validator,
-    llm_fallback) are loaded with sensible defaults if not provided.
+    All optional dependencies (library, org_overrides, validator,
+    converter) are loaded with sensible defaults if not provided.
     Pass an explicit instance to override:
 
-      - ``library``: from ``patterns.loader.load_library()``
+      - ``library``: few-shot examples for the converter (Pattern objects)
       - ``org_overrides``: from ``grammar.loaders.load_org_overrides(org)``
         (only loaded if the file exists; ``any`` bypasses)
       - ``validator``: built from the lint rules and the org overrides
-      - ``llm_fallback``: not run by default; pass an instance to enable.
-        The pipeline runs it only on unmatched segments.
+      - ``converter``: not run by default; pass an instance to enable.
+        The pipeline sends all tokens to the converter.
 
     Returns a :class:`ConversionResult` with the converted RTF, per-
     segment provenance, and validation issues.
     """
-    # Resolve dependencies. Seed library loads up front; verified
-    # suggestions layer in after audience classification (below) so
-    # the loader can filter by the current document's scope.
+    # Resolve dependencies. Verified suggestions layer in after audience
+    # classification so the loader can filter by the current document's scope.
     auto_load_suggestions = (
         library is None and include_verified_suggestions and org != "any"
     )
     if library is None:
-        report = pattern_loader.load_library()
-        library = report.patterns
+        library = []
     if org_overrides is None and org != "any":
         try:
             org_overrides = load_org_overrides(org)
@@ -348,104 +340,91 @@ def convert_template(
             audience=audience,
         )
 
-    # 2. Run the pattern engine over the stream.
-    stream_segments = patterns_engine.convert_stream(tokens, library, org=org)
-
-    # 3. Two-pass segment building. First pass collects which stream
-    #    segments are unmatched and bundles them into a single LLM
-    #    batch call. Document-level batching lets the LLM see siblings
-    #    so it can disambiguate context-dependent translations
-    #    (e.g. which entity an address belongs to in this letter).
-    unmatched_indices: List[int] = []
-    unmatched_tokens: List[JdaToken] = []
-    unmatched_contexts: List[tuple] = []   # parallel: (before, after) prose
-    for idx, s in enumerate(stream_segments):
-        if s.consumed == 0 or s.pattern is not None:
+    # 2. Build an exact-match lookup from verified suggestions in the
+    #    library (patterns with no holes and a single-token match).
+    #    These are user-accepted HITL mappings and apply deterministically
+    #    — the LLM is only called for tokens not covered here.
+    from .parser.pine_parser import parse as _parse_pine
+    suggestion_lookup: dict = {}
+    for p in library:
+        if p.holes or p.is_chunk_pattern() or p.rewrite is None:
             continue
-        if s.unmatched_source is not None:
-            unmatched_indices.append(idx)
-            unmatched_tokens.append(s.unmatched_source)
-            # Pull surrounding prose so context-dependent translations
-            # (MrMs salutation, c/o reversal, Dear-form last name, etc.)
-            # are disambiguated by what's actually next to the token —
-            # not just the token in isolation. We grab a wider raw RTF
-            # window than we need, strip it, then trim to a sensible
-            # display length so the LLM gets readable prose rather
-            # than \rtlch{\fcs1...} noise.
-            h = hits[s.source_start]
+        jda_key = p.match if isinstance(p.match, str) else p.match[0]
+        if jda_key in suggestion_lookup:
+            continue
+        pine_toks: List[PineToken] = []
+        for rw in (p.rewrite_tokens() or []):
+            try:
+                pine_toks.append(_parse_pine(rw))
+            except Exception:  # noqa: BLE001
+                pine_toks = []
+                break
+        if pine_toks:
+            suggestion_lookup[jda_key] = tuple(pine_toks)
+
+    # 3. Walk every JDA token: suggestions fire first, the rest are
+    #    collected for a single batch LLM call (document-level batching
+    #    lets the LLM see sibling context for disambiguation).
+    llm_indices: List[int] = []    # positions in `tokens` that need the LLM
+    llm_contexts: List[tuple] = []
+    for i, (tok, h) in enumerate(zip(tokens, hits)):
+        if tok.unparse() not in suggestion_lookup:
+            llm_indices.append(i)
             before_raw = rtf[max(0, h.start - 240) : h.start]
             after_raw  = rtf[h.end : h.end + 240]
-            unmatched_contexts.append((
+            llm_contexts.append((
                 _strip_rtf_for_context(before_raw)[-80:],
                 _strip_rtf_for_context(after_raw)[:80],
             ))
 
     batch_outputs: List[List[PineToken]] = []
-    drop_slots: set = set()    # indices into batch_outputs the LLM dropped
-    if llm_fallback is not None and unmatched_tokens:
+    drop_slots: set = set()
+    if converter is not None and llm_indices:
+        llm_tokens = [tokens[i] for i in llm_indices]
         try:
-            batch_outputs, drop_slots = llm_fallback.convert_batch(
-                unmatched_tokens, template_name=template_name,
-                contexts=tuple(unmatched_contexts),
+            batch_outputs, drop_slots = converter.convert_batch(
+                llm_tokens, template_name=template_name,
+                contexts=tuple(llm_contexts),
                 return_drops=True,
             )
-        except Exception:  # noqa: BLE001 — never let a fallback error abort the pipeline
-            batch_outputs = [[] for _ in unmatched_tokens]
-    # Index outputs back to their source segments. A slot the LLM
-    # returned as ``[]`` (intentional drop) is recorded here with an
-    # empty tuple so the segment-builder below can mark it PROV_LLM
-    # rather than leaving the raw JDA in the output as PROV_UNMATCHED.
-    output_for_segment: dict = {}
-    llm_dropped_segments: set = set()
-    for slot_i, (stream_idx, outs) in enumerate(
-        zip(unmatched_indices, batch_outputs)
-    ):
+        except Exception:  # noqa: BLE001 — never let a converter error abort the pipeline
+            batch_outputs = [[] for _ in llm_tokens]
+
+    # Index LLM outputs back to their token positions.
+    llm_output: dict = {}   # token_index → tuple[PineToken, ...]
+    for slot_i, (tok_i, outs) in enumerate(zip(llm_indices, batch_outputs)):
         if outs:
-            output_for_segment[stream_idx] = tuple(outs)
+            llm_output[tok_i] = tuple(outs)
         elif slot_i in drop_slots:
-            output_for_segment[stream_idx] = ()
-            llm_dropped_segments.add(stream_idx)
+            llm_output[tok_i] = ()   # intentional drop → still PROV_LLM
 
+    # Build final segments.
     segments: List[ConversionSegment] = []
-    for idx, s in enumerate(stream_segments):
-        if s.consumed == 0:
-            continue
-        seg_hits = hits[s.source_start : s.source_start + s.consumed]
-        seg_tokens = tuple(h.ast for h in seg_hits)
-        start_byte = seg_hits[0].start
-        end_byte = seg_hits[-1].end
-
-        if s.pattern is not None:
+    for i, (tok, h) in enumerate(zip(tokens, hits)):
+        jda_str = tok.unparse()
+        if jda_str in suggestion_lookup:
             segments.append(ConversionSegment(
-                source_start_byte=start_byte,
-                source_end_byte=end_byte,
-                source_jda_tokens=seg_tokens,
-                pine_outputs=s.outputs,
-                provenance=PROV_PATTERN,
-                pattern=s.pattern,
+                source_start_byte=h.start,
+                source_end_byte=h.end,
+                source_jda_tokens=(tok,),
+                pine_outputs=suggestion_lookup[jda_str],
+                provenance=PROV_SUGGESTION,
             ))
-            continue
-
-        if idx in output_for_segment:
-            # Both real translations and intentional drops (empty
-            # tuple) land here — they were "matched by the LLM",
-            # difference is whether any Pine output was produced.
+        elif i in llm_output:
             segments.append(ConversionSegment(
-                source_start_byte=start_byte,
-                source_end_byte=end_byte,
-                source_jda_tokens=seg_tokens,
-                pine_outputs=output_for_segment[idx],
+                source_start_byte=h.start,
+                source_end_byte=h.end,
+                source_jda_tokens=(tok,),
+                pine_outputs=llm_output[i],
                 provenance=PROV_LLM,
-                pattern=None,
             ))
         else:
             segments.append(ConversionSegment(
-                source_start_byte=start_byte,
-                source_end_byte=end_byte,
-                source_jda_tokens=seg_tokens,
+                source_start_byte=h.start,
+                source_end_byte=h.end,
+                source_jda_tokens=(tok,),
                 pine_outputs=(),
                 provenance=PROV_UNMATCHED,
-                pattern=None,
             ))
 
     # 4. Validate the combined Pine output stream.

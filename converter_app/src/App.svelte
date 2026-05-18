@@ -160,7 +160,7 @@
       org: "oba",
       totals: {
         jda_tokens: 0, pine_tokens: 0,
-        pattern_segments: 0, llm_segments: 0,
+        suggestion_segments: 0, llm_segments: 0,
         unmatched_segments: 0, edit_segments: 0,
       },
       segments: [], issues: [],
@@ -890,7 +890,7 @@
   let statsLine = $derived.by(() => {
     if (!result) return "Open an RTF to begin.";
     const t = result.totals;
-    return `${t.jda_tokens} JDA → ${t.pine_tokens} Pine  ·  ${t.pattern_segments} pattern  ·  ${t.llm_segments} LLM  ·  ${t.unmatched_segments} unmatched  ·  ${result.issues.length} issue${result.issues.length === 1 ? "" : "s"}`;
+    return `${t.jda_tokens} JDA → ${t.pine_tokens} Pine  ·  ${t.suggestion_segments} saved  ·  ${t.llm_segments} LLM  ·  ${t.unmatched_segments} unmatched  ·  ${result.issues.length} issue${result.issues.length === 1 ? "" : "s"}`;
   });
 
   // ── inline editing ──────────────────────────────────────────────
@@ -1128,10 +1128,10 @@
   }
 
   function provLabel(prov) {
-    if (prov === "pattern") return "Pattern";
-    if (prov === "llm")     return "LLM";
-    if (prov === "unmatched") return "Unmatched";
-    if (prov === "edit")    return "Edited";
+    if (prov === "suggestion") return "Saved";
+    if (prov === "llm")        return "LLM";
+    if (prov === "unmatched")  return "Unmatched";
+    if (prov === "edit")       return "Edited";
     return prov || "—";
   }
 
@@ -2007,10 +2007,10 @@
     word-break: break-word;
     white-space: normal;
   }
-  .prov-pattern  { color: #5eead4; }
-  .prov-llm      { color: #c084fc; }
-  .prov-unmatched { color: #f87171; }
-  .prov-edit     { color: #fbbf24; }
+  .prov-suggestion { color: #5eead4; }
+  .prov-llm        { color: #c084fc; }
+  .prov-unmatched  { color: #f87171; }
+  .prov-edit       { color: #fbbf24; }
   .info-issues .info-value { color: #f87171; }
   .issue-line { font-size: 11.5px; margin-bottom: 2px; }
   .status-saved   { color: #fbbf24; }

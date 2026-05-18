@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from pipeline.engine import suggestion_store
-from pipeline.parser import jda_parser, pine_parser
+from pipeline.parser import pine_parser
 
 
 # ─── basic accept / reject ─────────────────────────────────────────────────
@@ -97,11 +97,9 @@ class TestLoad:
     def test_empty_directory_returns_empty_list(self, tmp_path):
         assert suggestion_store.load_verified_for_org("oba", root=tmp_path) == []
 
-    def test_loaded_pattern_matches_original_jda(self, tmp_path):
-        # Accept a suggestion, then load it back, then run the pattern
-        # against the same JDA token — the matcher should see it as a
-        # valid pattern.
-        from pipeline.patterns import engine as patterns_engine
+    def test_loaded_suggestion_has_expected_match_and_rewrite(self, tmp_path):
+        # Accept a suggestion, load it back, and confirm the Pattern fields
+        # have the exact strings needed for the pipeline's suggestion lookup.
         suggestion_store.accept_suggestion(
             "%[TitleCase(SomeNovelEntity.FullName)]",
             "@[SomeNovelEntity.first.FormatName(F L).SetCasing(Title)]",
@@ -110,14 +108,9 @@ class TestLoad:
         )
         verified = suggestion_store.load_verified_for_org("oba", root=tmp_path)
         assert len(verified) == 1
-
-        # Run the verified pattern against the original JDA.
-        jda = jda_parser.parse("%[TitleCase(SomeNovelEntity.FullName)]")
-        result = patterns_engine.convert(jda, verified, org="oba")
-        assert result.matched
-        assert result.outputs[0].unparse() == (
-            "@[SomeNovelEntity.first.FormatName(F L).SetCasing(Title)]"
-        )
+        p = verified[0]
+        assert p.match == "%[TitleCase(SomeNovelEntity.FullName)]"
+        assert p.rewrite == "@[SomeNovelEntity.first.FormatName(F L).SetCasing(Title)]"
 
 
 # ─── special characters ────────────────────────────────────────────────────

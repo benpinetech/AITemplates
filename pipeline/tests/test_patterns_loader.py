@@ -139,14 +139,3 @@ class TestPatternsForOrg:
         assert [p.id for p in out] == ["b", "a"]   # b first (priority 200), then a (any/50)
 
 
-class TestRealLibrary:
-    """Smoke test against the real seed library — every TOML must load
-    without issues.
-    """
-
-    def test_real_library_loads_clean(self):
-        report = loader.load_library()
-        assert report.ok, "Real library has issues:\n" + "\n".join(
-            f"  {i.file}: {i.pattern_id}: {i.message}" for i in report.issues
-        )
-        assert len(report.patterns) > 0
