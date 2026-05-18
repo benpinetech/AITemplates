@@ -23,7 +23,7 @@ const isDev = !app.isPackaged && !process.env.JDAPINE_USE_DIST;
 // mode. In packaged mode the Python sidecar will be bundled as a
 // PyInstaller binary under process.resourcesPath/binaries/. Both
 // paths share the same JSON wire format (see convert.py --json).
-const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
+const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const VENV_PYTHON = path.join(REPO_ROOT, "venv", "bin", "python");
 const SIDECAR_NAME =
   process.platform === "win32" ? "jda_pine_sidecar.exe" : "jda_pine_sidecar";
@@ -212,7 +212,6 @@ function createWindow() {
 
   if (isDev) {
     win.loadURL("http://localhost:1421");
-    win.webContents.openDevTools({ mode: "detach" });
   } else {
     win.loadFile(path.join(__dirname, "..", "dist", "index.html"));
   }

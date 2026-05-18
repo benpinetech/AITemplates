@@ -152,7 +152,7 @@ class OpenAILlmClient:
         answer. Returns the LLM's final assistant message text.
         """
         from openai import OpenAI
-        kwargs = {"api_key": self._api_key}
+        kwargs = {"api_key": self._api_key, "timeout": 60.0}
         if self._base_url:
             kwargs["base_url"] = self._base_url
         client = OpenAI(**kwargs)

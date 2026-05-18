@@ -1,0 +1,11 @@
+[[pattern]]
+id          = 'verified_e47ca310'
+description = 'verified suggestion (exact-match cache)'
+provenance  = "llm-generated"
+verification = "verified"
+notes       = 'accepted 2026-05-18T10:26:48; org=oba; scope=template; scope_value=3A.rtf; source=3A.rtf; segment_index=5; note=inline edit from converter_app (scope=template); propagated to 1 other chip'
+org_context = 'oba'
+priority    = 500
+
+match   = '%[If(Cust_Complainant_MailAddress.Address.IsEmpty = true)]'
+rewrite = '@[If(ComplainantAddress.Any() == true)]'
