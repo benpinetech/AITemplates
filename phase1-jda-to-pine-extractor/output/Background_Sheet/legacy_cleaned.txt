@@ -1,5 +1,0 @@
-%[ FormatDate (CurrentDate(),MMMM d, yyyy) ]
-%[ kf_Atty_Pros_Active_AgencyNum.CaseAgencyNumber ]
-%[ KF_Background.EventNotes ]
-%[ Subdocument( Template ) ]
-%[TitleCase( JW_Defendant.FullName) ]

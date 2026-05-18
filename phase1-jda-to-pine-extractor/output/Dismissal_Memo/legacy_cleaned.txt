@@ -1,7 +1,0 @@
-%[ FormatDate (CurrentDate(),MMMM d, yyyy) ]
-%[ JW_Atty_Pros_Active.FullName ]
-%[ KF_Atty_Pros_Active_AgencyNum.CaseAgencyNumber ]
-%[ KF_AttyProsTitle.NameAttributeValue ]
-%[ KF_Investigator.FullName ]
-%[TitleCase( JW_Defendant.FullName) ]
-%[TitleCase( KF_Complainant.FullName) ]

@@ -1,7 +1,0 @@
-%[ FormatDate (CurrentDate(),MMMM d, yyyy) ]
-%[ Initials(JW_Atty_Pros_Active.FullName, false) ]
-%[ JW_Atty_Pros_Active.FullName ]
-%[ KF_AttyProsTitle.NameAttributeValue ]
-%[ Subdocument(Template ]
-%[ Subdocument(Template Address ) ]
-%[LowerCase( Initials (JW_CurrentUser.FullName,false)) ]

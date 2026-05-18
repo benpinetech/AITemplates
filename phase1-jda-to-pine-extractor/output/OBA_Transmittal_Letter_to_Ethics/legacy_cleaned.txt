@@ -1,4 +1,0 @@
-%[ JW_CaseDetails.ProsNum ]
-%[ term.term ]
-%[FormatDate(CurrentDate(),MMMM d, yyyy)]
-%[JW_Respondent.FullName]

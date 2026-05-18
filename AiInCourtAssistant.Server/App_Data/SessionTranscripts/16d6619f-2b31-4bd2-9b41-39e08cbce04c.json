@@ -1,9 +1,0 @@
-{
-  "sessionId": "16d6619f-2b31-4bd2-9b41-39e08cbce04c",
-  "tenantId": "00000000-0000-0000-0000-000000000000",
-  "courtroom": "Courtroom B",
-  "docketDate": "2025-10-17",
-  "status": "Failed",
-  "chunks": [],
-  "error": "Response status code does not indicate success: 400 (Bad Request)."
-}

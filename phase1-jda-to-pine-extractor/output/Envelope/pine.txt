@@ -1,6 +1,0 @@
-@[CreateVar(@InvAddress,@NameAddress.GetByQuery("NameID":@[Involvement.NameID]
-@[InvAddress.first.City]
-@[InvAddress.first.State]
-@[InvAddress.first.StreetAddress]
-@[InvAddress.first.Zip]
-@[Involvement.FormatName(F M L)]

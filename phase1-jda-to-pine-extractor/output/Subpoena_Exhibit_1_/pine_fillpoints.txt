@@ -1,8 +1,0 @@
-@[Prosecutor.first.FormatName(F L).SetCasing(Title)]
-@[Prosecutor.first.FormatName(F}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f0\kerning0\insrsid12338721 I}{\rtlch\fcs1 \af0 \ltrch\fcs0 \f0\kerning0\insrsid12338721\charrsid12338721 
-).SetCasing(Title)]
-@[Prosecutor.first.FormatName(L).SetCasing(Title)]
-@[ProsecutorBarNum.first.Number]
-@[ProsecutorPhone.first.PhoneNumber.FormatPhoneNumber()]
-@[ProsNum.first.Number]
-@[Respondent.first.FormatName(F L).SetCasing(Title)]

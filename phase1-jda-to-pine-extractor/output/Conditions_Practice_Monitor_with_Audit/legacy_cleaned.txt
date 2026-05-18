@@ -1,5 +1,0 @@
-%[ Else ]
-%[ ElseIf(T_PRACTICEMONITORCONDITIONS.Typeofagreement=Probation) ]
-%[ EndIf ]
-%[ If(SecondYear.SecondYear= Yes) ]
-%[ If(T_PRACTICEMONITORCONDITIONS.Typeofagreement=Diversion Agreement) ]

@@ -1,7 +1,0 @@
-%[ KF_Atty_Pros_Active_AgencyNum.CaseAgencyNumber ]
-%[ kf_Atty_Pros_Active.FBINUM ]
-%[ KF_AttyProsTitle.NameAttributeValue ]
-%[ KF_PhoneNumberActive.PhoneNumber ]
-%[TitleCase( JW_Atty_Pros_Active.FullName) ]
-%[TitleCase( JW_CurrentUser.FullName) ]
-%[UpperCase( JW_Defendant.FullName) ]

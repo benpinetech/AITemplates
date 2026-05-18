@@ -1,2 +1,0 @@
-%[ DCDate.DCDate ]
-%[ term.term ]

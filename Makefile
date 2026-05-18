@@ -1,36 +1,48 @@
-AGENT_DIR     := Agent
-SRC_DIR       := $(AGENT_DIR)/src
-GUI_DIR       := $(AGENT_DIR)/gui
-CONVERTER_DIR := $(AGENT_DIR)/converter_app
+CONVERTER_DIR := converter_app
+DASHBOARD_DIR := dashboard
 VENV          := venv
 PYTHON        := $(VENV)/bin/python
 PIP           := $(VENV)/bin/pip
 STREAMLIT     := $(VENV)/bin/streamlit
 
-.PHONY: run\:eval run\:converter dev install cleandb help
+.PHONY: run run\:converter run\:dashboard dev install build test help
+
+# ─── Default entry point ──────────────────────────────────────────────────
+# Safe to run immediately after cloning — creates the venv and installs deps
+# if missing, then launches the converter.
+run: _ensure-venv _ensure-npm run\:converter
+
+_ensure-venv:
+	@if [ ! -d "$(VENV)" ]; then \
+		echo "→ Creating virtual environment…"; \
+		python3 -m venv $(VENV); \
+		echo "→ Installing Python dependencies…"; \
+		$(PIP) install -r requirements.txt; \
+	fi
+
+_ensure-npm:
+	@command -v npm >/dev/null 2>&1 || { \
+	  echo "✗ Node/npm not found. Install from https://nodejs.org/ then re-run."; exit 1; }
+	@if [ ! -d "$(CONVERTER_DIR)/node_modules" ]; then \
+	  echo "→ Installing Node dependencies…"; \
+	  cd $(CONVERTER_DIR) && npm install; \
+	fi
+
+.PHONY: _ensure-venv _ensure-npm
 
 # ─── Production converter (Electron + Svelte) ─────────────────────────────
-# Two-pane document UI. Spawns the v2 pipeline (the project venv's Python
-# in dev mode; a PyInstaller-built sidecar in packaged builds) via IPC.
-# The Electron postinstall sometimes fails to extract its prebuilt
-# binary under newer Node versions — this target self-heals that.
 run\:converter:
-	@command -v npm >/dev/null 2>&1 || { \
-	  echo "✗ Node not found. Install: https://nodejs.org/"; exit 1; }
 	cd $(CONVERTER_DIR) && \
-	  if [ ! -d node_modules ]; then npm install; fi && \
 	  if ! ./node_modules/.bin/electron --version >/dev/null 2>&1; then \
 	    echo "→ Electron install is broken. Repairing…"; \
 	    rm -rf node_modules/electron/dist node_modules/electron/path.txt && \
 	    npm install electron --no-save >/dev/null 2>&1 || true; \
 	    if ! ./node_modules/.bin/electron --version >/dev/null 2>&1; then \
-	      echo "  npm postinstall didn't extract the binary"; \
-	      echo "  (known incompatibility between extract-zip + newer Node versions)."; \
 	      echo "  Falling back to manual unzip from the cached download…"; \
 	      ZIP=$$(find ~/.cache/electron -name 'electron-v*-linux-*.zip' -printf '%T@ %p\n' 2>/dev/null \
 	             | sort -rn | awk '{print $$2}' | head -1); \
 	      if [ -z "$$ZIP" ] || [ ! -f "$$ZIP" ]; then \
-	        echo "✗ No cached Electron zip in ~/.cache/electron. Try:"; \
+	        echo "✗ No cached Electron zip. Try:"; \
 	        echo "    cd $(CONVERTER_DIR) && rm -rf node_modules package-lock.json && npm install"; \
 	        exit 1; \
 	      fi; \
@@ -47,38 +59,49 @@ run\:converter:
 	  npm run dev
 
 # ─── Streamlit eval dashboard ─────────────────────────────────────────────
-# FastAPI agent server + Streamlit multi-page app in parallel.
-# Ctrl-C kills both.
-run\:eval:
-	@$(PYTHON) $(SRC_DIR)/server.py & \
-	SERVER_PID=$$!; \
-	STREAMLIT_BROWSER_GATHER_USAGE_STATS=false $(STREAMLIT) run $(GUI_DIR)/Home.py --server.port 8501; \
-	kill $$SERVER_PID 2>/dev/null; \
-	wait $$SERVER_PID 2>/dev/null
+run\:dashboard:
+	STREAMLIT_BROWSER_GATHER_USAGE_STATS=false \
+	  $(STREAMLIT) run $(DASHBOARD_DIR)/Home.py --server.port 8501
 
-# Streamlit only, with hot reload on save. No API server — assumes it's already running.
 dev:
-	STREAMLIT_BROWSER_GATHER_USAGE_STATS=false $(STREAMLIT) run $(GUI_DIR)/Home.py --server.port 8501 --server.runOnSave true
+	STREAMLIT_BROWSER_GATHER_USAGE_STATS=false \
+	  $(STREAMLIT) run $(DASHBOARD_DIR)/Home.py --server.port 8501 --server.runOnSave true
 
-# ─── Setup / housekeeping ─────────────────────────────────────────────────
+# ─── Tests ────────────────────────────────────────────────────────────────
+test:
+	$(PYTHON) -m pytest pipeline/tests -q
 
+# ─── Setup ────────────────────────────────────────────────────────────────
 install:
 	@if [ ! -d "$(VENV)" ]; then \
-		echo "Creating virtual environment..."; \
+		echo "Creating virtual environment…"; \
 		python3 -m venv $(VENV); \
 	fi
 	$(PIP) install -r requirements.txt
 
-cleandb:
-	rm -rf $(AGENT_DIR)/chroma_db $(AGENT_DIR)/mapping_db
-	@echo "Deleted chroma_db and mapping_db"
+# ─── Installer / packaged build ───────────────────────────────────────────
+# Produces a distributable installer for the current platform.
+# Requires: pip install pyinstaller  AND  npm install -g electron-builder
+# Steps:
+#   1. PyInstaller — packages the Python pipeline into a self-contained binary
+#   2. electron-builder — wraps Electron + the sidecar into an OS installer
+build: _ensure-venv _ensure-npm
+	@echo "→ Building PyInstaller sidecar…"
+	$(PYTHON) -m PyInstaller sidecar.spec --distpath converter_app/binaries_tmp --noconfirm
+	@echo "→ Moving sidecar binary into place…"
+	@mv converter_app/binaries_tmp/jda_pine_sidecar$(if $(filter Windows_NT,$(OS)),.exe,) \
+	     converter_app/binaries/
+	@rm -rf converter_app/binaries_tmp build
+	@echo "→ Building Electron installer…"
+	cd $(CONVERTER_DIR) && npx electron-builder --$(if $(filter Darwin,$(shell uname -s)),mac,$(if $(filter Windows_NT,$(OS)),win,linux))
+	@echo "✓ Installer written to converter_app/dist/"
 
 help:
 	@echo "Targets:"
-	@echo "  make run:converter   — production GUI (Electron + Svelte)"
-	@echo "  make run:eval        — FastAPI server + Streamlit eval dashboard"
-	@echo "  make dev             — Streamlit only (hot reload)"
-	@echo ""
-	@echo "Setup:"
+	@echo "  make run             — first-run entry point: venv + deps + converter"
+	@echo "  make run:converter   — launch the converter (assumes deps installed)"
+	@echo "  make run:dashboard   — Streamlit eval dashboard"
+	@echo "  make dev             — Streamlit dashboard with hot reload"
+	@echo "  make test            — run the test suite"
 	@echo "  make install         — create venv, install Python deps"
-	@echo "  make cleandb         — wipe chroma_db / mapping_db"
+	@echo "  make build           — build distributable installer (requires pyinstaller)"

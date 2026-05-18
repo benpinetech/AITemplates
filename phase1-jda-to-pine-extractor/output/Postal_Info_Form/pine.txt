@@ -1,4 +1,0 @@
-@[builtin.today.FormatDate(preset1)]
-@[ProsNum.first.Number]
-@[Subdocument(3)]
-@[Subdocument(5)]

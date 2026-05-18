@@ -1,6 +1,0 @@
-%[ Else ]
-%[ ElseIf(TypeofAgreement.Typeofagreement=Probation) ]
-%[ EndIf ]
-%[ If(TypeofAgreement.Typeofagreement=Diversion Agreement) ]
-%[ JW_Defendant.HeShe ]
-%[ JW_Defendant.HisHer ]

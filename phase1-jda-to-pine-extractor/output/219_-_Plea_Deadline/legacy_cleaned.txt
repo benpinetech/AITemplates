@@ -1,2 +1,0 @@
-%[ JW_CaseDetails.CourtNum ]
-%[ Subdocument(Subdocs ]

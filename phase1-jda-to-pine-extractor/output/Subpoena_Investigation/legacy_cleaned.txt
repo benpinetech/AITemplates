@@ -1,7 +1,0 @@
-%[ Else ]
-%[ ElseIf(Subpoena.SubpoenaTo=Attend and Produce) ]
-%[ EndIf ]
-%[ If(Subpoena.SubpoenaTo=Attend) ]
-%[ kf_Atty_Pros_Active_AgencyNum.CaseAgencyNumber ]
-%[TitleCase( KF_Atty_Pros_Active.FullName) ]
-%[UpperCase( kf_Defendant.FullName) ]

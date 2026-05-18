@@ -1,8 +1,0 @@
-%[ JW_VicWitOff.HisHer ]
-%[ JW_VicWitOff.LastName ]
-%[ JW_VicWitOff.MrMs ]
-%[ LowerCase(Initials (JW_CurrentUser.FullName,false)) ]
-%[ Subdocument(Template ]
-%[ Subdocument(Template Address ) ]
-%[ Subdocument(Template to R) ]
-%[ TitleCase(JW_VicWitOff.FullName) ]

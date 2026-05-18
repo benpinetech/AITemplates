@@ -1,6 +1,0 @@
-%[ Else ]
-%[ EndIf ]
-%[ If( KF_Petitioner.InvolveTypeDesc.IsEmpty) ]
-%[ If(KF_Petitioner.InvolveTypeDesc.IsEmpty) ]
-%[ kf_Defendant.InvolveTypeDesc ]
-%[ KF_Petitioner.InvolveTypeDesc ]

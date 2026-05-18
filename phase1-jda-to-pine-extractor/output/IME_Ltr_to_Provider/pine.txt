@@ -1,6 +1,0 @@
-@[builtin.today.FormatDate(preset1)]
-@[cu.FormatName(FILI)]
-@[Prosecutor.first.FormatName(F L).SetCasing(Title)]
-@[Prosecutor.first.FormatName(FILI)]
-@[Subdocument(3)]
-@[Subdocument(5)]

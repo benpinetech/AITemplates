@@ -1,8 +1,0 @@
-%[ Else ]
-%[ EndIf ]
-%[ FormatDate (CurrentDate(),MMMM d, yyyy) ]
-%[ If ( JW_Atty_ Pros_Active_AgencyNum.CaseAgencyNumber.IsEmpty) ]
-%[ JW_Atty_Pros_Active_AgencyNum.CaseAgencyNumber ]
-%[ JW_Atty_Pros_Active.FullName ]
-%[ JW_CaseDetails.CaseID ]
-%[TitleCase( JW_Defendant.FullName) ]

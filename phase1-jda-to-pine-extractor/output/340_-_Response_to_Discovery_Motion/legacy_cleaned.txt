@@ -1,4 +1,0 @@
-%[ Cust_Atty_Def_Active2.FullName ]
-%[ Cust_Atty_Def_Active2.HisHer ]
-%[ Cust_Defendant.FullName ]
-%[ Subdocument(Subdocs ]
