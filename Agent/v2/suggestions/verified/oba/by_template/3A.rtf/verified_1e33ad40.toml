@@ -1,0 +1,11 @@
+[[pattern]]
+id          = 'verified_1e33ad40'
+description = 'verified suggestion (exact-match cache)'
+provenance  = "llm-generated"
+verification = "verified"
+notes       = 'accepted 2026-05-16T17:48:27; org=oba; scope=template; scope_value=3A.rtf; source=3A.rtf; segment_index=0; note=inline edit from converter_app (scope=template); propagated to 1 other chip; shape=1→2'
+org_context = 'oba'
+priority    = 500
+
+match   = '%[Cust_Complainant.FullName]'
+rewrite = ['@[Complainant.first]', '@[Complainant.first.NameLastName]']

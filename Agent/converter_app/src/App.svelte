@@ -4,15 +4,20 @@
   // Node, no fs — everything that touches the disk or spawns a
   // process is brokered through the typed IPC surface.
 
-  import SettingsDialog from "./SettingsDialog.svelte";
-  import HelpDialog from "./HelpDialog.svelte";
+  import SettingsDialog  from "./SettingsDialog.svelte";
+  import MappingsDialog  from "./MappingsDialog.svelte";
+  import HelpDialog      from "./HelpDialog.svelte";
 
   /** @type {string} The model id surfaced as the toolbar status. */
   let model = $state("gpt-5.5");
+  /** @type {boolean} Whether an API key has been saved in settings. */
+  let hasApiKey = $state(false);
   /** @type {boolean} Settings dialog open flag. */
-  let settingsOpen = $state(false);
+  let settingsOpen  = $state(false);
+  /** @type {boolean} Mappings dialog open flag. */
+  let mappingsOpen  = $state(false);
   /** @type {boolean} Help dialog open flag. */
-  let helpOpen = $state(false);
+  let helpOpen      = $state(false);
 
   /**
    * @type {null | {
@@ -41,6 +46,8 @@
 
   /** Path of the currently-loaded RTF (so Save knows what to suggest). */
   let sourcePath = $state(null);
+  /** Path the converted RTF was last explicitly saved to (enables silent Save). */
+  let savedPath = $state(null);
 
   // Which chip is currently being edited. Replaces the inline
   // contenteditable with a popover anchored to the chip's bounding rect.
@@ -60,6 +67,11 @@
   // session, plus their persistence state.
   let editedKeys = $state({});  // key → { status: "saved"|"pending"|"error", error?: string }
 
+  // Undo/redo stacks — each entry is a snapshot of { rtf, editedKeys }
+  // taken just before a chip edit is applied.
+  let undoStack = $state([]);
+  let redoStack = $state([]);
+
   // Auto-save / crash-recovery state. The snapshot is written to a
   // hidden file under app userData/recovery/<sha1(sourcePath)>.json
   // every ~500ms while edits are in flight. An explicit Save clears
@@ -74,10 +86,11 @@
   /** Timer handle for the debounce. Not reactive — plain JS. */
   let autoSaveTimer = null;
 
-  // Hydrate the toolbar model pill from saved settings on mount.
+  // Hydrate the toolbar model pill and API key presence from saved settings on mount.
   $effect(() => {
     window.api.getSettings().then((s) => {
       if (s.model) model = s.model;
+      hasApiKey = !!s.api_key;
     }).catch(() => { /* ignore — toolbar just shows defaults */ });
   });
 
@@ -85,12 +98,41 @@
   // application menu (File → Settings on Linux/Win, ⌘ → Preferences
   // on macOS, or the Ctrl/Cmd+, accelerator).
   $effect(() => {
-    window.api.onOpenSettings(() => { settingsOpen = true; });
+    window.api.onOpenSettings(() => { settingsOpen  = true; });
+    window.api.onOpenMappings(() => { mappingsOpen  = true; });
   });
 
   // Same for the Help menu (F1 accelerator).
   $effect(() => {
     window.api.onOpenHelp(() => { helpOpen = true; });
+  });
+
+  // File → Open… / Ctrl+O, Save / Ctrl+S, Save As… / Ctrl+Shift+S from the app menu.
+  $effect(() => {
+    window.api.onOpenFile(() => { handleOpen(); });
+    window.api.onSaveFile(() => { handleSave(); });
+    window.api.onSaveFileAs(() => { handleSaveAs(); });
+    window.api.onUndo(() => { handleUndo(); });
+    window.api.onRedo(() => { handleRedo(); });
+  });
+
+  // Global Ctrl+Z / Ctrl+Shift+Z keyboard shortcuts for undo/redo.
+  // Skipped when a contenteditable chip is focused so the browser's
+  // native text-level undo still works while typing inside a chip.
+  $effect(() => {
+    function onKeydown(e) {
+      if (e.target.isContentEditable) return;
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && !e.shiftKey && e.key === "z") {
+        e.preventDefault();
+        handleUndo();
+      } else if (mod && (e.key === "y" || (e.shiftKey && e.key === "z"))) {
+        e.preventDefault();
+        handleRedo();
+      }
+    }
+    window.addEventListener("keydown", onKeydown);
+    return () => window.removeEventListener("keydown", onKeydown);
   });
 
   // ── actions ─────────────────────────────────────────────────────
@@ -100,7 +142,10 @@
     const picked = await window.api.openRtf();
     if (!picked) return;
     sourcePath = picked.path;
+    savedPath = null;
     editedKeys = {};
+    undoStack = [];
+    redoStack = [];
     autoSaveStatus = "idle";
     lastAutoSavedAt = null;
     recoveryOffer = null;
@@ -142,6 +187,8 @@
     editingChip = null;
     hoverInfo = null;
     editedKeys = {};
+    undoStack = [];
+    redoStack = [];
     try {
       result = await window.api.convertRtf({ path: sourcePath });
       // A fresh conversion supersedes any pending restore offer for
@@ -157,30 +204,91 @@
     }
   }
 
-  async function handleSave() {
+  /**
+   * Collect current Pine token strings and regenerate the CreateVar
+   * prelude to reflect any edits made since the last conversion. Returns
+   * the updated RTF string, or the original if regeneration fails (so a
+   * save error is never fatal to the user's work).
+   */
+  async function buildFreshRtf() {
+    const currentPineTokens = pineParts
+      .filter((p) => p.kind === "pine")
+      .map((p) => p.text);
+    const r = await window.api.refreshPrelude({
+      rtf: result.converted.rtf,
+      pine_tokens: currentPineTokens,
+      org: result.org || "oba",
+      prelude_count: result.prelude_pine_token_count || 0,
+    });
+    if (r?.ok && typeof r.rtf === "string") {
+      return r.rtf;
+    }
+    if (r?.error) console.warn("refreshPrelude failed:", r.error);
+    return result.converted.rtf;
+  }
+
+  async function handleSaveAs() {
     if (!result?.converted?.rtf) {
       error = "Nothing to save. Convert first.";
       return;
     }
     error = "";
-    const defaultName = sourcePath
-      ? sourcePath.replace(/(\.rtf)?$/i, ".pine.rtf").split(/[\\/]/).pop()
-      : "converted.pine.rtf";
+    const freshRtf = await buildFreshRtf();
+    const defaultName = savedPath
+      ? savedPath.split(/[\\/]/).pop()
+      : sourcePath
+        ? sourcePath.replace(/(\.rtf)?$/i, ".pine.rtf").split(/[\\/]/).pop()
+        : "converted.pine.rtf";
     const saved = await window.api.saveRtf({
       defaultPath: defaultName,
-      rtf: result.converted.rtf,
+      rtf: freshRtf,
     });
     if (saved) {
-      console.log("saved to", saved.path);
-      // The user now has authoritative output on disk — drop the
-      // recovery snapshot. If they keep editing, auto-save will
-      // re-arm it on the next mutation.
-      if (sourcePath) {
-        window.api.clearRecovery({ sourcePath }).catch(() => {});
-      }
+      savedPath = saved.path;
+      if (sourcePath) window.api.clearRecovery({ sourcePath }).catch(() => {});
       autoSaveStatus = "idle";
       lastAutoSavedAt = null;
     }
+  }
+
+  async function handleSave() {
+    if (!result?.converted?.rtf) {
+      error = "Nothing to save. Convert first.";
+      return;
+    }
+    // If we've already saved once this session, write silently to the same path.
+    if (savedPath) {
+      error = "";
+      try {
+        const freshRtf = await buildFreshRtf();
+        await window.api.writeRtf({ path: savedPath, rtf: freshRtf });
+        if (sourcePath) window.api.clearRecovery({ sourcePath }).catch(() => {});
+        autoSaveStatus = "idle";
+        lastAutoSavedAt = null;
+      } catch (e) {
+        error = String(e?.message || e);
+      }
+    } else {
+      await handleSaveAs();
+    }
+  }
+
+  function handleUndo() {
+    if (!undoStack.length) return;
+    const prev = undoStack[undoStack.length - 1];
+    redoStack = [...redoStack, { rtf: result.converted.rtf, editedKeys: { ...editedKeys } }];
+    undoStack = undoStack.slice(0, -1);
+    result.converted.rtf = prev.rtf;
+    editedKeys = prev.editedKeys;
+  }
+
+  function handleRedo() {
+    if (!redoStack.length) return;
+    const next = redoStack[redoStack.length - 1];
+    undoStack = [...undoStack, { rtf: result.converted.rtf, editedKeys: { ...editedKeys } }];
+    redoStack = redoStack.slice(0, -1);
+    result.converted.rtf = next.rtf;
+    editedKeys = next.editedKeys;
   }
 
   function acceptRecovery() {
@@ -247,6 +355,7 @@
 
   function onSettingsSaved(next) {
     model = next?.model || "gpt-5.5";
+    hasApiKey = !!next?.api_key;
   }
 
   // ── token rendering ─────────────────────────────────────────────
@@ -263,13 +372,37 @@
 
   const RTF_CONTROL_TO_TEXT = {
     par: "\n", line: "\n", tab: "\t",
-    lquote: "‘", rquote: "’",
-    ldblquote: "“", rdblquote: "”",
-    endash: "–", emdash: "—",
-    bullet: "•", tilde: "~",
-    enspace: " ", emspace: " ",
-    nbsp: " ",
+    lquote: "\u2018", rquote: "\u2019",
+    ldblquote: "\u201c", rdblquote: "\u201d",
+    endash: "\u2013", emdash: "\u2014",
+    bullet: "\u2022", tilde: "~",
+    enspace: "\u2002", emspace: "\u2003",
+    nbsp: "\u00a0",
   };
+
+  /**
+   * Parse RTF section geometry. Returns one entry per RTF section, each
+   * with the page height and width in CSS pixels (twips / 15 at 96 DPI).
+   * Falls back to letter (816 × 1056) when no RTF dimension tags are found.
+   */
+  function parseSections(rtf) {
+    if (!rtf) return [{ heightPx: 1056, widthPx: 816 }];
+    const paperH = rtf.match(/\\paperh(\d+)/);
+    const paperW = rtf.match(/\\paperw(\d+)/);
+    const defaultH = paperH ? Math.round(parseInt(paperH[1], 10) / 15) : 1056;
+    const defaultW = paperW ? Math.round(parseInt(paperW[1], 10) / 15) : 816;
+    // Split on \sect (not \sectd, \section, etc.)
+    const chunks = rtf.split(/\\sect(?![a-zA-Z])/);
+    if (chunks.length === 1) return [{ heightPx: defaultH, widthPx: defaultW }];
+    return chunks.map((chunk) => {
+      const h = chunk.match(/\\pghsxn(\d+)/);
+      const w = chunk.match(/\\pgwsxn(\d+)/);
+      return {
+        heightPx: h ? Math.round(parseInt(h[1], 10) / 15) : defaultH,
+        widthPx:  w ? Math.round(parseInt(w[1], 10) / 15) : defaultW,
+      };
+    });
+  }
 
   function stripRtf(s) {
     if (!s) return "";
@@ -368,6 +501,19 @@
 
     while (i < len) {
       const ch = text[i];
+
+      // RTF section break: \sect but not \sectd, \section, etc.
+      if (ch === "\\" && text.slice(i + 1, i + 5) === "sect" && !/[a-zA-Z]/.test(text[i + 5] || "")) {
+        if (i > proseStart) {
+          parts.push({ kind: "prose", text: stripRtf(text.slice(proseStart, i)), start: proseStart, end: i });
+        }
+        const end = i + 5 + (text[i + 5] === " " ? 1 : 0);
+        parts.push({ kind: "section-break", start: i, end });
+        i = end;
+        proseStart = i;
+        continue;
+      }
+
       if ((ch === "%" || ch === "@") && text[i + 1] === "[") {
         let depth = 1;
         let j = i + 2;
@@ -429,6 +575,12 @@
     const paragraphs = [[]];
     let cur = paragraphs[0];
     parts.forEach((part, idx) => {
+      if (part.kind === "section-break") {
+        paragraphs.push({ __sectionBreak: true });
+        cur = [];
+        paragraphs.push(cur);
+        return;
+      }
       if (part.kind === "prose") {
         const lines = (part.text || "").split("\n");
         lines.forEach((line, i) => {
@@ -450,39 +602,35 @@
     return paragraphs;
   }
 
-  let legacyParagraphs = $derived(groupParagraphs(legacyParts));
-  let pineParagraphs   = $derived(groupParagraphs(pineParts));
+  /**
+   * Split a flat groupParagraphs output at ``__sectionBreak`` sentinels
+   * and pair each run with the corresponding section geometry.
+   */
+  function groupIntoSections(paragraphs, sections) {
+    const result = [];
+    let sIdx = 0;
+    let cur = [];
+    for (const para of paragraphs) {
+      if (para.__sectionBreak) {
+        result.push({ ...(sections[sIdx] || { heightPx: 1056, widthPx: 816 }), paragraphs: cur });
+        sIdx++;
+        cur = [];
+      } else {
+        cur.push(para);
+      }
+    }
+    result.push({ ...(sections[sIdx] || { heightPx: 1056, widthPx: 816 }), paragraphs: cur });
+    return result;
+  }
 
-  // Split pineParagraphs into the prelude (CreateVar declarations the
-  // pipeline auto-prepends) and the actual body. The prelude is
-  // rendered as a compact header above the letter so it doesn't push
-  // the body down with a wall of variable-definition paragraphs.
-  let preludeSplit = $derived.by(() => {
-    if (!preludePineCount) {
-      return { prelude: [], body: pineParagraphs };
-    }
-    const prelude = [];
-    const body = [];
-    let pinesSeen = 0;
-    let inBody = false;
-    for (const para of pineParagraphs) {
-      if (inBody) {
-        body.push(para);
-        continue;
-      }
-      let chipsInPara = 0;
-      for (const item of para) {
-        if (item.kind !== "chip") continue;
-        if (pineParts[item.idx]?.kind === "pine") chipsInPara++;
-      }
-      prelude.push(para);
-      pinesSeen += chipsInPara;
-      if (pinesSeen >= preludePineCount) inBody = true;
-    }
-    return { prelude, body };
-  });
-  let preludeParagraphs  = $derived(preludeSplit.prelude);
-  let pineBodyParagraphs = $derived(preludeSplit.body);
+  let legacySections = $derived(groupIntoSections(
+    groupParagraphs(legacyParts),
+    parseSections(result?.source?.rtf || ""),
+  ));
+  let pineSections = $derived(groupIntoSections(
+    groupParagraphs(pineParts),
+    parseSections(result?.converted?.rtf || ""),
+  ));
 
   // ── Pagination ──────────────────────────────────────────────────
   // CSS alone can't break content at page boundaries (without
@@ -505,10 +653,17 @@
 
   function adjustPagination(paper) {
     if (!paper) return;
+    const sectionH = parseInt(paper.dataset.sectionHeight || "1056", 10);
     const ps = paper.querySelectorAll(":scope > .prose > p");
-    if (!ps.length) return;
-    // Reset all marginTop overrides so we start from the natural flow.
+    paper.style.minHeight = "";
     for (const p of ps) p.style.marginTop = "";
+    const paperRect = paper.getBoundingClientRect();
+    // Short pages (e.g. CreateVar prelude boxes) don't paginate — just
+    // enforce the section's own height.
+    if (sectionH < PAGE_HEIGHT || !ps.length) {
+      paper.style.minHeight = `${sectionH}px`;
+      return;
+    }
     // Walk top-to-bottom. Each push cascades to subsequent paragraphs
     // (their measured top moves accordingly), so a single forward pass
     // is enough. We compute the new marginTop relative to the PREVIOUS
@@ -516,7 +671,6 @@
     // top — because CSS margin-collapse between adjacent <p>s would
     // otherwise eat the prev margin-bottom (~8pt) and leave the
     // pushed paragraph that much short of where we wanted it.
-    const paperRect = paper.getBoundingClientRect();
     for (let i = 0; i < ps.length; i++) {
       const p = ps[i];
       const r = p.getBoundingClientRect();
@@ -544,21 +698,90 @@
         if (newMarginTop > 0) p.style.marginTop = `${newMarginTop}px`;
       }
     }
+    // Pad the paper so the last page is always a full letter page,
+    // matching how Word renders documents (no half-height final page).
+    const lastP = ps[ps.length - 1];
+    const lastBottom = lastP.getBoundingClientRect().bottom - paper.getBoundingClientRect().top;
+    const pageCount = Math.max(1, Math.ceil(lastBottom / PAGE_CYCLE));
+    paper.style.minHeight = `${pageCount * PAGE_CYCLE - PAGE_GAP}px`;
   }
 
-  // Re-run pagination whenever the rendered paragraphs change.
-  // Dependencies are listed explicitly so the effect re-fires on any
-  // edit that changes pine/legacy parts.
-  $effect(() => {
-    legacyParagraphs; pineParagraphs;
-    // Wait for the DOM to update with the new paragraphs before
-    // measuring. queueMicrotask runs after Svelte's flush.
-    queueMicrotask(() => {
-      for (const paper of document.querySelectorAll(".paper")) {
-        adjustPagination(paper);
+  /**
+   * Svelte use-action: attach to each .paper element. Runs adjustPagination
+   * after mount and re-runs whenever the bound ``data`` value changes (i.e.,
+   * when section content changes after a file open or convert).
+   *
+   * A ResizeObserver on the inner .prose div catches cases where layout
+   * settles after the initial double-rAF (e.g., system font metrics that
+   * differ from what the browser computed on first insertion). The observer
+   * coalesces via ``rafId !== null`` guard so it won't cascade: if a run
+   * is already scheduled it skips; the post-run DOM change is idempotent so
+   * one extra observation cycle terminates cleanly.
+   */
+  function paginateAction(node, data) {
+    let rafId = null;
+    let obs = null;
+
+    function paginate() {
+      rafId = null;
+      // If the element isn't in the document yet, getBoundingClientRect()
+      // returns zeros and pagination produces wrong results. Retry next frame.
+      if (!document.contains(node)) {
+        rafId = requestAnimationFrame(paginate);
+        return;
       }
-    });
-  });
+      adjustPagination(node);
+      // Reveal after pagination so the user never sees the unpaginated state.
+      node.style.opacity = "";
+    }
+
+    // Called by ResizeObserver. Only schedules if nothing is already pending
+    // so our own DOM writes (margin-top changes) don't cascade endlessly.
+    // Fonts are guaranteed loaded by this point (resize fired after layout),
+    // so no fonts.ready wait needed here.
+    function scheduleResize() {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(paginate);
+    }
+
+    function run() {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      // First rAF lets Svelte flush and the browser insert the element.
+      // Then we wait for document.fonts.ready so Google Fonts (Carlito,
+      // JetBrains Mono, etc.) are applied before we measure text heights —
+      // font load reflows text and can push content past the page-break band
+      // if we measure with fallback metrics. On cache-hit fonts.ready
+      // resolves in the next microtask (no visible delay). Second rAF after
+      // fonts ensures layout is computed before getBoundingClientRect().
+      rafId = requestAnimationFrame(() => {
+        document.fonts.ready.then(() => {
+          rafId = requestAnimationFrame(paginate);
+        });
+      });
+    }
+
+    const prose = node.querySelector(":scope > .prose");
+    if (prose && typeof ResizeObserver !== "undefined") {
+      obs = new ResizeObserver(scheduleResize);
+      obs.observe(prose);
+    }
+
+    // Hide until pagination runs to prevent the clipping flash.
+    node.style.opacity = "0";
+    run();
+    return {
+      update(newData) {
+        // Always hide briefly on content change so the user never sees the
+        // un-paginated layout. The double-rAF (~33ms) is imperceptible.
+        node.style.opacity = "0";
+        run();
+      },
+      destroy() {
+        if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+        if (obs) { obs.disconnect(); obs = null; }
+      },
+    };
+  }
 
   // Flat list of (segment, tokenIndex) entries — one per Pine output
   // token in the segments stream, in document order. Position k in
@@ -720,7 +943,7 @@
     // bracket spans, so the user can't accidentally delete them.
     // Strip defensively in case a paste smuggled them in, then
     // re-wrap so the chip survives the next tokenize pass.
-    let inner = cleaned.replace(/^@\[/, "").replace(/\]+$/, "");
+    let inner = cleaned.replace(/@\[([^\]]*)\]/g, "$1").replace(/^@\[/, "").replace(/\]+$/, "");
     const part = pineParts[partIndex];
     if (!part) { editingChip = null; return; }
     if (!inner) { editingChip = null; return; }
@@ -733,6 +956,10 @@
   }
 
   function applyPineEdit(partIndex, part, newText, scope) {
+    // Snapshot before mutating so undo can restore.
+    undoStack = [...undoStack, { rtf: result.converted.rtf, editedKeys: { ...editedKeys } }];
+    redoStack = [];
+
     const sourceInfo = segmentForPinePart(partIndex);
 
     // Without a segment mapping or a usable source JDA, just splice
@@ -932,27 +1159,73 @@
 <div class="app">
   <!-- ── Header ───────────────────────────────────────────── -->
   <header class="toolbar">
+    <!-- Left: all action buttons in one tight group -->
     <div class="actions">
-      <button class="btn-ghost" onclick={handleOpen} disabled={busy}>Open</button>
-      <button class="btn-primary" onclick={handleConvert} disabled={busy || !sourcePath}>
-        {busy ? "Converting…" : "Convert"}
+      <button class="btn-icon" onclick={handleOpen} disabled={busy} title="Open (Ctrl+O)">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+        </svg>
+        Open
       </button>
-      <button class="btn-ghost" onclick={handleSave} disabled={busy || !result?.converted?.rtf}>Save</button>
-    </div>
-
-    <div class="file-info">
-      <span class="file-name" class:placeholder={!result?.template_name}>
-        {result?.template_name || "No file loaded"}
+      <button class="btn-icon" onclick={handleSave} disabled={busy || !result?.converted?.rtf} title="Save (Ctrl+S)">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+          <polyline points="17 21 17 13 7 13 7 21"/>
+          <polyline points="7 3 7 8 15 8"/>
+        </svg>
+        Save
+      </button>
+      <button class="btn-icon" onclick={handleSaveAs} disabled={busy || !result?.converted?.rtf} title="Save As (Ctrl+Shift+S)">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+          <polyline points="17 21 17 13 7 13 7 21"/>
+          <polyline points="7 3 7 8 15 8"/>
+          <line x1="12" y1="17" x2="15" y2="14"/>
+          <polyline points="13 13 15 13 15 15"/>
+        </svg>
+        Save As
+      </button>
+      <span class="btn-sep"></span>
+      <button class="btn-icon" onclick={handleUndo} disabled={!undoStack.length} title="Undo (Ctrl+Z)">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="9 14 4 9 9 4"/>
+          <path d="M20 20v-7a4 4 0 0 0-4-4H4"/>
+        </svg>
+        Undo
+      </button>
+      <button class="btn-icon" onclick={handleRedo} disabled={!redoStack.length} title="Redo (Ctrl+Y)">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 14 20 9 15 4"/>
+          <path d="M4 20v-7a4 4 0 0 1 4-4h12"/>
+        </svg>
+        Redo
+      </button>
+      <span class="btn-sep"></span>
+      <span
+        class="convert-wrap"
+        title={!hasApiKey ? "Set your OpenAI API key in Settings before converting" : ""}
+      >
+        <button class="btn-primary" onclick={handleConvert} disabled={busy || !sourcePath || !hasApiKey}>
+          {busy ? "Converting…" : "Convert"}
+        </button>
       </span>
-      {#if result?.audience}
-        <span class="audience-pill">{result.audience}</span>
-      {/if}
     </div>
 
-    <span class="model-pill" title="LLM model — change under File → Settings">
-      <span class="dot"></span>
-      {model || "gpt-5.5"}
-    </span>
+    <!-- Right: file context + model -->
+    <div class="toolbar-right">
+      <div class="file-info">
+        <span class="file-name" class:placeholder={!result?.template_name}>
+          {result?.template_name || "No file loaded"}
+        </span>
+        {#if result?.audience}
+          <span class="audience-pill">{result.audience}</span>
+        {/if}
+      </div>
+      <span class="model-pill" title="LLM model — change under Settings">
+        <span class="dot"></span>
+        {model || "gpt-5.5"}
+      </span>
+    </div>
   </header>
 
   {#if error}
@@ -978,36 +1251,46 @@
     <section class="pane">
       <div class="pane-label">Legacy · JDA</div>
       <div class="pane-stage">
-        <article class="paper">
-          {#if legacyParts.length === 0}
-            <div class="empty">Open a JDA RTF to begin.</div>
-          {:else}
-            <div class="prose">
-              {#each legacyParagraphs as paragraph}
-                <p>
-                  {#each paragraph as item}
-                    {#if item.kind === "chip"}
-                      {@const part = legacyParts[item.idx]}
-                      {#if part.kind === "legacy"}
-                        {@const legChipIdx = legacyChipIndexByPartIdx[item.idx]}
-                        {@const legInfo = legChipIdx >= 0 ? legacyChipInfo[legChipIdx] : null}
-                        <span
-                          class="token-legacy"
-                          class:linked={legInfo && legInfo.segment.index === highlightedSegmentIndex}
-                          title="JDA source token"
-                        >{part.text}</span>
+        {#if legacyParts.length === 0}
+          <article class="paper paginated" data-section-height={PAGE_HEIGHT} style="max-width: 816px">
+            <div class="empty">Open a legacy template file to begin.</div>
+          </article>
+        {:else}
+          {#each legacySections as section}
+            <article
+              class="paper"
+              class:paginated={section.heightPx >= PAGE_HEIGHT}
+              data-section-height={section.heightPx}
+              style="max-width: {section.widthPx}px"
+              use:paginateAction={section.paragraphs}
+            >
+              <div class="prose">
+                {#each section.paragraphs as paragraph}
+                  <p>
+                    {#each paragraph as item}
+                      {#if item.kind === "chip"}
+                        {@const part = legacyParts[item.idx]}
+                        {#if part.kind === "legacy"}
+                          {@const legChipIdx = legacyChipIndexByPartIdx[item.idx]}
+                          {@const legInfo = legChipIdx >= 0 ? legacyChipInfo[legChipIdx] : null}
+                          <span
+                            class="token-legacy"
+                            class:linked={legInfo && legInfo.segment.index === highlightedSegmentIndex}
+                            title="JDA source token"
+                          >{part.text}</span>
+                        {:else}
+                          <span class="token-pine static">{part.text}</span>
+                        {/if}
                       {:else}
-                        <span class="token-pine static">{part.text}</span>
+                        <span>{item.text}</span>
                       {/if}
-                    {:else}
-                      <span>{item.text}</span>
-                    {/if}
-                  {/each}
-                </p>
-              {/each}
-            </div>
-          {/if}
-        </article>
+                    {/each}
+                  </p>
+                {/each}
+              </div>
+            </article>
+          {/each}
+        {/if}
       </div>
     </section>
     <div class="pane-divider"></div>
@@ -1017,8 +1300,8 @@
         <div class="progress-bar" role="progressbar" aria-label="Converting"></div>
       {/if}
       <div class="pane-stage">
-        <article class="paper">
-          {#if pineParts.length === 0}
+        {#if pineParts.length === 0}
+          <article class="paper paginated" data-section-height={PAGE_HEIGHT} style="max-width: 816px">
             <div class="empty">
               {#if busy}
                 <div class="spinner" aria-hidden="true"></div>
@@ -1030,18 +1313,22 @@
                 The converted output will appear here.
               {/if}
             </div>
-          {:else}
-            {#if preludeParagraphs.length > 0}
-              <div class="paper-header">
-                <div class="paper-header-label">Variable definitions</div>
-                {@render renderPineParagraphs(preludeParagraphs)}
+          </article>
+        {:else}
+          {#each pineSections as section}
+            <article
+              class="paper"
+              class:paginated={section.heightPx >= PAGE_HEIGHT}
+              data-section-height={section.heightPx}
+              style="max-width: {section.widthPx}px"
+              use:paginateAction={section.paragraphs}
+            >
+              <div class="prose">
+                {@render renderPineParagraphs(section.paragraphs)}
               </div>
-            {/if}
-            <div class="prose">
-              {@render renderPineParagraphs(pineBodyParagraphs)}
-            </div>
-          {/if}
-        </article>
+            </article>
+          {/each}
+        {/if}
       </div>
     </section>
   </main>
@@ -1073,7 +1360,8 @@
                     }}
                     onpaste={(e) => {
                       e.preventDefault();
-                      const text = e.clipboardData?.getData("text/plain") || "";
+                      const raw = e.clipboardData?.getData("text/plain") || "";
+                      const text = raw.replace(/@\[([^\]]*)\]/g, "$1").trim();
                       document.execCommand("insertText", false, text);
                     }}
                   >{part.text.replace(/^@\[/, "").replace(/\]+$/, "")}</span><span class="chip-bracket" aria-hidden="true">]</span></span>
@@ -1160,7 +1448,7 @@
 
   <!-- ── Status bar ───────────────────────────────────────── -->
   <footer>
-    <span class="hint">Click any <code>@[…]</code> chip to edit. Hover for provenance.</span>
+    <span class="hint">Click any <code>@[…]</code> chip to edit.</span>
     <span
       class="autosave"
       class:saving={autoSaveStatus === "saving"}
@@ -1171,7 +1459,8 @@
   </footer>
 
   <SettingsDialog bind:open={settingsOpen} onSaved={onSettingsSaved} />
-  <HelpDialog bind:open={helpOpen} />
+  <MappingsDialog bind:open={mappingsOpen} />
+  <HelpDialog     bind:open={helpOpen} />
 </div>
 
 <style>
@@ -1208,15 +1497,41 @@
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   }
 
-  /* File context — filename + optional audience pill. The file-info
-   * block claims the left and pushes everything that follows right via
-   * a margin auto on the actions group. */
+  .actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 7px;
+  }
+
+  .convert-wrap {
+    display: inline-flex;
+    cursor: default;
+  }
+
+  .btn-sep {
+    width: 1px;
+    align-self: stretch;
+    background: rgba(255, 255, 255, 0.08);
+    margin: 3px 2px;
+  }
+
+  .toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    min-width: 0;
+  }
+
   .file-info {
     display: flex;
     align-items: center;
     gap: 8px;
     min-width: 0;
-    margin-left: auto;
   }
   .file-name {
     font-size: 13px;
@@ -1245,21 +1560,11 @@
     text-transform: lowercase;
   }
 
-  /* Action button group — center-pushed via margin-auto from the file
-   * info, segmented with a tight 2px gap so the three buttons read as
-   * one cluster instead of loose siblings. */
-  .actions {
-    display: inline-flex;
-    gap: 2px;
-    padding: 2px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-    border-radius: 7px;
-  }
+  .btn-icon,
   .btn-ghost,
   .btn-primary {
     border: none;
-    padding: 5px 12px;
+    padding: 5px 10px;
     border-radius: 5px;
     font-size: 12.5px;
     font-weight: 500;
@@ -1267,6 +1572,20 @@
     transition: background 0.12s, color 0.12s;
     line-height: 1.4;
   }
+  .btn-icon {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: transparent;
+    color: #9ca3b8;
+    padding: 5px 10px;
+  }
+  .btn-icon svg { flex-shrink: 0; }
+  .btn-icon:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.06);
+    color: #e6e8ef;
+  }
+  .btn-icon:disabled { color: #3a3f4b; cursor: not-allowed; }
   .btn-ghost {
     background: transparent;
     color: #9ca3b8;
@@ -1359,9 +1678,11 @@
   .pane-stage {
     flex: 1;
     overflow-y: auto;
-    padding: 0 16px 24px;
+    padding: 16px 16px 24px;
+    gap: 16px;
     display: flex;
-    justify-content: center;
+    flex-direction: column;
+    align-items: center;
     scroll-behavior: smooth;
     /* Slim, theme-matched scrollbar so the dark frame stays clean
      * around the white paper. */
@@ -1389,27 +1710,25 @@
   .paper {
     color: #1f2532;
     width: 100%;
-    max-width: 816px;                /* 8.5in × 96dpi */
-    min-height: 1056px;              /* one letter page (11in × 96dpi) */
-    align-self: flex-start;          /* don't stretch — grow with content */
-    padding: 0;                       /* margins live on the children so the
-                                          prelude header can hug the paper's
-                                          top edge while the body keeps its
-                                          letter margins */
+    flex-shrink: 0;              /* never compress below content height */
+    /* max-width and min-height are set as inline styles per section */
+    padding: 0;
     box-shadow:
       0 1px 0 rgba(255, 255, 255, 0.4) inset,
       0 2px 6px rgba(0, 0, 0, 0.22),
       0 26px 60px rgba(0, 0, 0, 0.4);
     border: 1px solid rgba(0, 0, 0, 0.10);
     position: relative;
-    /* Page-break band across the full paper, every 1072px (1056 page +
-     * 16 gap). This works because adjustPagination() pushes any
-     * paragraph that would cross a boundary down to the start of the
-     * next page, so the y=1056–1072 region inside the paper is always
-     * empty space between paragraphs and the dark band never paints
-     * over text. The opaque dark color reads as the canvas showing
-     * through between two stacked sheets. */
     background-color: #fbfaf6;
+  }
+  /* Page-break band only on letter-height sections (paginated class).
+   * Short sections (e.g. CreateVar prelude boxes) have no page breaks.
+   * min-height ensures the paper always fills at least one letter page
+   * before adjustPagination() runs (avoids the text-clipping flash on
+   * first render where the paper would otherwise collapse to content
+   * height, placing the band inside the text). */
+  .paper.paginated {
+    min-height: 1056px;
     background-image: repeating-linear-gradient(
       to bottom,
       transparent 0,
@@ -1417,38 +1736,6 @@
       rgba(15, 18, 35, 0.92) 1056px,
       rgba(15, 18, 35, 0.92) 1072px);
   }
-
-  /* Variable-definitions header. Sits at the top of the converted
-   * paper, occupying what used to be empty top-margin whitespace. The
-   * pipeline prepends a CreateVar prelude to make the Pine output
-   * self-contained; surfacing it here keeps the body content from
-   * being pushed down by a wall of declaration paragraphs. */
-  .paper-header {
-    padding: 14px 96px 12px;
-    background: rgba(15, 18, 35, 0.04);
-    border-bottom: 1px solid rgba(15, 18, 35, 0.10);
-    font-family: "JetBrains Mono", "SF Mono", monospace;
-    font-size: 9pt;
-    line-height: 1.35;
-    color: #2a2f3a;
-    max-height: 264px;               /* ~quarter letter page */
-    overflow-y: auto;
-  }
-  .paper-header-label {
-    font-family: "Inter", system-ui, sans-serif;
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 1.6px;
-    text-transform: uppercase;
-    color: #6b7280;
-    margin-bottom: 6px;
-  }
-  .paper-header p {
-    margin: 0 0 4pt 0;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-  }
-  .paper-header p:last-child { margin-bottom: 0; }
 
   .empty {
     color: #9a9a92;

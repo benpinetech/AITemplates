@@ -35,6 +35,13 @@ contextBridge.exposeInMainWorld("api", {
   saveRtf: (args) => ipcRenderer.invoke("saveRtf", args),
 
   /**
+   * Write an RTF directly to a known path without showing a dialog.
+   * @param {{ path: string, rtf: string }} args
+   * @returns {Promise<{ path: string }>}
+   */
+  writeRtf: (args) => ipcRenderer.invoke("writeRtf", args),
+
+  /**
    * Auto-save a recovery snapshot for the given source RTF path. The
    * payload is round-tripped JSON, so callers must pre-strip any
    * Svelte $state proxies (JSON.parse(JSON.stringify(...)) is fine).
@@ -109,4 +116,70 @@ contextBridge.exposeInMainWorld("api", {
   onOpenHelp: (cb) => {
     ipcRenderer.on("open-help", cb);
   },
+
+  /**
+   * Subscribe to "open-file" messages from File → Open… (or Ctrl/Cmd+O).
+   * @param {() => void} cb
+   */
+  onOpenFile: (cb) => {
+    ipcRenderer.on("open-file", cb);
+  },
+
+  /**
+   * Subscribe to "save-file" messages from File → Save… (or Ctrl/Cmd+S).
+   * @param {() => void} cb
+   */
+  onSaveFile: (cb) => {
+    ipcRenderer.on("save-file", cb);
+  },
+
+  /**
+   * Subscribe to "save-file-as" messages from File → Save As… (or Ctrl+Shift+S).
+   * @param {() => void} cb
+   */
+  onSaveFileAs: (cb) => {
+    ipcRenderer.on("save-file-as", cb);
+  },
+
+  /** Subscribe to Edit → Undo menu item. */
+  onUndo: (cb) => { ipcRenderer.on("app-undo", cb); },
+
+  /** Subscribe to Edit → Redo menu item. */
+  onRedo: (cb) => { ipcRenderer.on("app-redo", cb); },
+
+  /** Subscribe to Settings → Saved Mappings… menu item. */
+  onOpenMappings: (cb) => { ipcRenderer.on("open-mappings", cb); },
+
+  /**
+   * Strip the old generated CreateVar prelude from the converted RTF and
+   * regenerate it from the current live Pine token strings. Call this before
+   * saving to ensure the output is valid even when the user has edited chips.
+   * ``prelude_count`` must be the ``prelude_pine_token_count`` from the
+   * original conversion result — when 0, no stripping is done (safe for
+   * documents where @[CreateVar] tokens come from the source file).
+   * @param {{ rtf: string, pine_tokens: string[], org?: string, prelude_count?: number }} args
+   * @returns {Promise<{ ok: true, rtf: string } | { error: string }>}
+   */
+  refreshPrelude: (args) => ipcRenderer.invoke("refreshPrelude", args),
+
+  /**
+   * List all persisted suggestions for an org.
+   * @param {{ org?: string }} args
+   * @returns {Promise<Array<{ file, scope_kind, scope_value, org, jda_tokens, pine_tokens }> | { error }>}
+   */
+  listSuggestions: (args) => ipcRenderer.invoke("listSuggestions", args),
+
+  /**
+   * Delete a suggestion file by its absolute path.
+   * @param {{ file: string }} args
+   * @returns {Promise<{ ok: true } | { error: string }>}
+   */
+  deleteSuggestion: (args) => ipcRenderer.invoke("deleteSuggestion", args),
+
+  /**
+   * Replace a suggestion's Pine tokens. Deletes the old file and writes a new one.
+   * @param {{ file: string, payload: { org, scope: {kind, value}, jda_tokens, pine_tokens } }} args
+   * @returns {Promise<{ ok: true, path: string } | { error: string }>}
+   */
+  updateSuggestion: (args) => ipcRenderer.invoke("updateSuggestion", args),
 });

@@ -105,7 +105,11 @@ function buildMenu() {
     if (win) win.webContents.send(channel);
   };
   const openSettings = () => sendToFocused("open-settings");
+  const openMappings = () => sendToFocused("open-mappings");
   const openHelp = () => sendToFocused("open-help");
+  const openFile = () => sendToFocused("open-file");
+  const saveFile = () => sendToFocused("save-file");
+  const saveFileAs = () => sendToFocused("save-file-as");
 
   const template = [
     // macOS app menu — gets Preferences here per platform convention.
@@ -128,43 +132,52 @@ function buildMenu() {
     {
       label: "File",
       submenu: [
-        // On non-mac, Settings lives under File (next to the standard
-        // Settings/Preferences placements in most Linux/Win desktop apps).
-        ...(!isMac ? [
-          { label: "Settings…", accelerator: "Ctrl+,", click: openSettings },
-          { type: "separator" },
-        ] : []),
+        { label: "Open…",    accelerator: isMac ? "Cmd+O"       : "Ctrl+O",       click: openFile },
+        { label: "Save",     accelerator: isMac ? "Cmd+S"       : "Ctrl+S",       click: saveFile },
+        { label: "Save As…", accelerator: isMac ? "Cmd+Shift+S" : "Ctrl+Shift+S", click: saveFileAs },
+        { type: "separator" },
         isMac ? { role: "close" } : { role: "quit" },
       ],
     },
-    { role: "editMenu" },
-    { role: "viewMenu" },
-    { role: "windowMenu" },
+    {
+      label: "Edit",
+      submenu: [
+        { label: "Undo", accelerator: isMac ? "Cmd+Z"       : "Ctrl+Z",       click: () => sendToFocused("app-undo") },
+        { label: "Redo", accelerator: isMac ? "Cmd+Shift+Z" : "Ctrl+Shift+Z", click: () => sendToFocused("app-redo") },
+        { type: "separator" },
+        { role: "cut" },
+        { role: "copy" },
+        { role: "paste" },
+        { type: "separator" },
+        { role: "selectAll" },
+      ],
+    },
+    {
+      label: "View",
+      submenu: [
+        { role: "zoomIn" },
+        { role: "zoomOut" },
+        { role: "resetZoom" },
+        { type: "separator" },
+        { role: "togglefullscreen" },
+        { type: "separator" },
+        { role: "reload" },
+      ],
+    },
+    {
+      label: "Settings",
+      submenu: [
+        { label: "LLM Settings…",    accelerator: isMac ? "Cmd+," : "Ctrl+,", click: openSettings },
+        { label: "Saved Mappings…",  click: openMappings },
+      ],
+    },
     {
       role: "help",
       submenu: [
         {
-          label: "How to Use JDA → Pine Converter",
+          label: "How to Use JDA to Pine Converter",
           accelerator: "F1",
           click: openHelp,
-        },
-        { type: "separator" },
-        {
-          label: "About JDA → Pine Converter",
-          click: () => {
-            dialog.showMessageBox({
-              type: "info",
-              title: "About JDA → Pine Converter",
-              message: "JDA → Pine Converter",
-              detail:
-                "Converts legacy JDA template syntax (%[…]) to Pine " +
-                "template syntax (@[…]) for case-management documents.\n\n" +
-                "Open an RTF, click Convert to run the pipeline, then click " +
-                "any Pine token to refine it. Edits are persisted as scoped " +
-                "suggestions for future conversions of the same template.",
-              buttons: ["OK"],
-            });
-          },
         },
       ],
     },
@@ -258,6 +271,13 @@ ipcMain.handle("saveRtf", async (_evt, args = {}) => {
   if (result.canceled || !result.filePath) return null;
   fs.writeFileSync(result.filePath, rtf, "utf-8");
   return { path: result.filePath };
+});
+
+ipcMain.handle("writeRtf", async (_evt, args = {}) => {
+  const { path: filePath, rtf } = args;
+  if (!filePath || typeof rtf !== "string") throw new Error("writeRtf: missing path or rtf");
+  fs.writeFileSync(filePath, rtf, "utf-8");
+  return { path: filePath };
 });
 
 // Crash-recovery snapshot file for a given source RTF. Keyed by a
@@ -434,6 +454,107 @@ function runPersistEdit(payload) {
     });
   });
 }
+
+/**
+ * Spawn manage_suggestions.py with the given CLI args. Always resolves;
+ * shape is the JSON the CLI prints, or { error } on spawn/parse failure.
+ */
+function runManageSuggestions(cliArgs) {
+  if (app.isPackaged) {
+    return Promise.resolve({ error: "manage_suggestions is not yet wired in packaged builds" });
+  }
+  return new Promise((resolve) => {
+    if (!fs.existsSync(VENV_PYTHON)) {
+      resolve({ error: `Dev mode needs the project venv at ${VENV_PYTHON}` });
+      return;
+    }
+    const args = ["-m", "Agent.v2.tools.manage_suggestions", ...cliArgs];
+    const child = spawn(VENV_PYTHON, args, { cwd: REPO_ROOT, env: pipelineEnv() });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => { stdout += d.toString("utf-8"); });
+    child.stderr.on("data", (d) => { stderr += d.toString("utf-8"); });
+    child.on("error", (e) => resolve({ error: `spawn failed: ${e.message}` }));
+    child.on("close", () => {
+      try {
+        resolve(JSON.parse(stdout.trim() || "null"));
+      } catch {
+        resolve({
+          error: `manage_suggestions emitted non-JSON: ${stdout.slice(0, 200)}` +
+                 (stderr ? `\nstderr: ${stderr.trim()}` : ""),
+        });
+      }
+    });
+  });
+}
+
+/**
+ * Spawn update_prelude.py with the RTF as stdin. Sends current Pine
+ * token strings so the tool can strip the old CreateVar prelude and
+ * regenerate from the live chip state. Always resolves; shape is
+ * { ok: true, rtf: string } or { error: string }.
+ */
+function runUpdatePrelude(rtf, pineTokens, org = "oba", preludeCount = 0) {
+  if (app.isPackaged) {
+    return Promise.resolve({ error: "refreshPrelude is not yet wired in packaged builds" });
+  }
+  return new Promise((resolve) => {
+    if (!fs.existsSync(VENV_PYTHON)) {
+      resolve({ error: `Dev mode needs the project venv at ${VENV_PYTHON}` });
+      return;
+    }
+    const args = [
+      "-m", "Agent.v2.tools.update_prelude",
+      "--tokens", JSON.stringify(pineTokens),
+      "--org", org,
+      "--prelude-count", String(preludeCount),
+    ];
+    const child = spawn(VENV_PYTHON, args, { cwd: REPO_ROOT, env: pipelineEnv() });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => { stdout += d.toString("utf-8"); });
+    child.stderr.on("data", (d) => { stderr += d.toString("utf-8"); });
+    child.on("error", (e) => resolve({ error: `spawn failed: ${e.message}` }));
+    child.on("close", () => {
+      try {
+        resolve(JSON.parse(stdout.trim() || "{}"));
+      } catch {
+        resolve({
+          error: `update_prelude emitted non-JSON: ${stdout.slice(0, 200)}` +
+                 (stderr ? `\nstderr: ${stderr.trim()}` : ""),
+        });
+      }
+    });
+    // Write RTF to the child's stdin, then close it so the process knows
+    // the input is complete.
+    child.stdin.write(rtf, "utf-8");
+    child.stdin.end();
+  });
+}
+
+ipcMain.handle("refreshPrelude", async (_evt, { rtf, pine_tokens, org = "oba", prelude_count = 0 } = {}) => {
+  if (typeof rtf !== "string") return { error: "refreshPrelude: missing rtf" };
+  if (!Array.isArray(pine_tokens)) return { error: "refreshPrelude: missing pine_tokens" };
+  return runUpdatePrelude(rtf, pine_tokens, org, prelude_count);
+});
+
+ipcMain.handle("listSuggestions", async (_evt, { org = "oba" } = {}) => {
+  return runManageSuggestions(["--mode", "list", "--org", org]);
+});
+
+ipcMain.handle("deleteSuggestion", async (_evt, { file } = {}) => {
+  if (!file) return { error: "deleteSuggestion: missing file" };
+  return runManageSuggestions(["--mode", "delete", "--file", file]);
+});
+
+ipcMain.handle("updateSuggestion", async (_evt, { file, payload } = {}) => {
+  if (!file || !payload) return { error: "updateSuggestion: missing file or payload" };
+  return runManageSuggestions([
+    "--mode", "update",
+    "--file", file,
+    "--payload", JSON.stringify(payload),
+  ]);
+});
 
 // ─────────────────────────────────────────────────────────────────────
 // App lifecycle
