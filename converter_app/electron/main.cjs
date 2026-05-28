@@ -24,7 +24,10 @@ const isDev = !app.isPackaged && !process.env.JDAPINE_USE_DIST;
 // PyInstaller binary under process.resourcesPath/binaries/. Both
 // paths share the same JSON wire format (see convert.py --json).
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
-const VENV_PYTHON = path.join(REPO_ROOT, "venv", "bin", "python");
+const VENV_PYTHON =
+  process.platform === "win32"
+    ? path.join(REPO_ROOT, "venv", "Scripts", "python.exe")
+    : path.join(REPO_ROOT, "venv", "bin", "python");
 const SIDECAR_NAME =
   process.platform === "win32" ? "jda_pine_sidecar.exe" : "jda_pine_sidecar";
 
