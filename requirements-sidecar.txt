@@ -1,0 +1,14 @@
+# Minimal runtime dependencies for the packaged jda_pine_sidecar binary.
+#
+# The full requirements.txt installs the dev/eval stack (langchain,
+# chromadb, streamlit, pandas, ...). The packaged converter does NOT use
+# any of that — the pipeline is LLM-only and talks to OpenAI directly.
+# Keep this list tight so the PyInstaller bundle stays small.
+#
+# Build the sidecar with:
+#   pip install -r requirements-sidecar.txt pyinstaller
+#   pyinstaller sidecar.spec
+
+openai
+python-dotenv
+pydantic

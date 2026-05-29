@@ -30,6 +30,15 @@ const VENV_PYTHON =
     : path.join(REPO_ROOT, "venv", "bin", "python");
 const SIDECAR_NAME =
   process.platform === "win32" ? "jda_pine_sidecar.exe" : "jda_pine_sidecar";
+// In packaged mode the PyInstaller onedir bundle is copied (via
+// electron-builder extraResources) to resources/binaries/jda_pine_sidecar/,
+// so the launcher exe lives one directory deeper than the bundle root.
+const SIDECAR_PATH = path.join(
+  process.resourcesPath || "",
+  "binaries",
+  "jda_pine_sidecar",
+  SIDECAR_NAME,
+);
 
 // Load the repo-root .env (OPENAI_API_KEY, OPENAI_MODEL, etc.) into
 // process.env at startup so the Python pipeline child inherits the
@@ -362,7 +371,7 @@ ipcMain.handle("persistEdit", async (_evt, args = {}) => {
 function runPipeline(rtfPath, org) {
   const usePackagedSidecar = app.isPackaged;
   const cmd = usePackagedSidecar
-    ? path.join(process.resourcesPath, "binaries", SIDECAR_NAME)
+    ? SIDECAR_PATH
     : VENV_PYTHON;
   const args = usePackagedSidecar
     ? ["convert", rtfPath, "--org", org, "--json"]
@@ -424,7 +433,7 @@ function runPipeline(rtfPath, org) {
 function runPersistEdit(payload) {
   const usePackagedSidecar = app.isPackaged;
   const cmd = usePackagedSidecar
-    ? path.join(process.resourcesPath, "binaries", SIDECAR_NAME)
+    ? SIDECAR_PATH
     : VENV_PYTHON;
   const args = usePackagedSidecar
     ? ["persist_suggestion", "--payload", JSON.stringify(payload)]
@@ -461,7 +470,7 @@ function runPersistEdit(payload) {
 function runManageSuggestions(cliArgs) {
   const usePackagedSidecar = app.isPackaged;
   const cmd = usePackagedSidecar
-    ? path.join(process.resourcesPath, "binaries", SIDECAR_NAME)
+    ? SIDECAR_PATH
     : VENV_PYTHON;
   const args = usePackagedSidecar
     ? ["manage_suggestions", ...cliArgs]
@@ -500,7 +509,7 @@ function runManageSuggestions(cliArgs) {
 function runUpdatePrelude(rtf, pineTokens, org = "oba", preludeCount = 0) {
   const usePackagedSidecar = app.isPackaged;
   const cmd = usePackagedSidecar
-    ? path.join(process.resourcesPath, "binaries", SIDECAR_NAME)
+    ? SIDECAR_PATH
     : VENV_PYTHON;
   const args = usePackagedSidecar
     ? ["update_prelude", "--tokens", JSON.stringify(pineTokens), "--org", org, "--prelude-count", String(preludeCount)]

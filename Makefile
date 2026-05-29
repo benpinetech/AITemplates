@@ -86,15 +86,15 @@ install:
 #   1. PyInstaller — packages the Python pipeline into a self-contained binary
 #   2. electron-builder — wraps Electron + the sidecar into an OS installer
 build: _ensure-venv _ensure-npm
-	@echo "→ Building PyInstaller sidecar…"
-	$(PYTHON) -m PyInstaller sidecar.spec --distpath converter_app/binaries_tmp --noconfirm
-	@echo "→ Moving sidecar binary into place…"
-	@mv converter_app/binaries_tmp/jda_pine_sidecar$(if $(filter Windows_NT,$(OS)),.exe,) \
-	     converter_app/binaries/
-	@rm -rf converter_app/binaries_tmp build
+	@echo "→ Building PyInstaller sidecar (onedir)…"
+	$(PYTHON) -m PyInstaller sidecar.spec --noconfirm
+	@echo "→ Staging sidecar bundle into converter_app/binaries/…"
+	@rm -rf converter_app/binaries/jda_pine_sidecar
+	@mkdir -p converter_app/binaries
+	@cp -r dist/jda_pine_sidecar converter_app/binaries/jda_pine_sidecar
 	@echo "→ Building Electron installer…"
 	cd $(CONVERTER_DIR) && npx electron-builder --$(if $(filter Darwin,$(shell uname -s)),mac,$(if $(filter Windows_NT,$(OS)),win,linux))
-	@echo "✓ Installer written to converter_app/dist/"
+	@echo "✓ Installer written to converter_app/release/"
 
 help:
 	@echo "Targets:"

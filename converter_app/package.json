@@ -2,6 +2,7 @@
   "name": "jda-pine-converter",
   "version": "0.1.0",
   "description": "JDA → Pine converter — Electron + Svelte prototype",
+  "author": "Oklahoma Bar Association",
   "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
@@ -43,18 +44,29 @@
       }
     ],
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "JDA Pine Converter"
     },
     "mac": {
       "target": "dmg",
-      "category": "public.app-category.productivity"
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.png"
     },
     "linux": {
       "target": [
         "AppImage",
         "deb"
       ],
-      "category": "Office"
+      "category": "Office",
+      "icon": "build/icon.png"
     }
   }
 }
