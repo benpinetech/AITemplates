@@ -25,6 +25,16 @@ if errorlevel 1 (
 if not exist "venv\Scripts\python.exe" (
   echo Creating Python virtual environment...
   python -m venv venv || exit /b 1
+)
+
+REM Verify the venv actually has the runtime deps. A venv whose python.exe
+REM exists but whose packages are missing (interrupted first install,
+REM antivirus blocking a write, partial pip run, or a requirements change)
+REM is the usual cause of "No module named pydantic" at launch. The old
+REM guard only checked for python.exe and so never self-healed. Probe the
+REM core imports and (re)install if any are missing.
+venv\Scripts\python -c "import pydantic, striprtf, dotenv, langchain_openai" >nul 2>nul
+if errorlevel 1 (
   echo Installing Python dependencies...
   venv\Scripts\python -m pip install -r requirements.txt || exit /b 1
 )

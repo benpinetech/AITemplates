@@ -32,7 +32,6 @@
    *     unmatched_segments: number, edit_segments: number,
    *   },
    *   segments: Array<object>,
-   *   issues: Array<object>,
    * }}
    * Current conversion bundle, or null when nothing's loaded.
    */
@@ -56,6 +55,32 @@
 
   // Hover-info card. Coordinates are viewport-relative (position: fixed).
   let hoverInfo = $state(null);
+
+  // The "add a new mapping" dialog. Null when closed; otherwise holds
+  // the in-progress form (pine var text + the legacy var to tie it to)
+  // and a persist status.
+  /** @type {null | { pineText: string, legacyToken: string, status: null|"saving"|"error", error: string }} */
+  let addingVar = $state(null);
+
+  // Where a right-click chose to insert a new Pine var. ``rtfOffset`` is
+  // the splice point in the converted RTF; x/y/height position the
+  // visible insertion caret (viewport coords). Null when no point is set.
+  /** @type {null | { rtfOffset: number, x: number, y: number, height: number }} */
+  let insertAt = $state(null);
+
+  // The right-click context menu in the Pine pane. Null when closed.
+  /** @type {null | { x: number, y: number }} */
+  let pineContextMenu = $state(null);
+
+  // Chip→segment remap. ``segmentForPinePart`` maps the k-th rendered
+  // Pine chip to ``pineChipInfo[k]``, which assumes the rendered chips
+  // line up 1:1 with the conversion's segments. Structural edits
+  // (insert / delete) break that, so this array overrides the mapping:
+  // ``chipMap[r]`` is the pineChipInfo index for the r-th post-prelude
+  // chip, or null for a manually-inserted chip with no segment. Null
+  // here means "no structural edits yet — use the identity mapping".
+  /** @type {null | Array<number|null>} */
+  let chipMap = $state(null);
 
   // The segment whose JDA chips on the legacy side should glow as the
   // "source" of whatever Pine chip is currently being hovered or
@@ -146,6 +171,7 @@
     editedKeys = {};
     undoStack = [];
     redoStack = [];
+    chipMap = null;
     autoSaveStatus = "idle";
     lastAutoSavedAt = null;
     recoveryOffer = null;
@@ -163,7 +189,7 @@
         suggestion_segments: 0, llm_segments: 0,
         unmatched_segments: 0, edit_segments: 0,
       },
-      segments: [], issues: [],
+      segments: [],
     };
     // Look for a previous auto-save and surface a restore prompt. A
     // recovery file is only worth offering if it has a converted RTF —
@@ -189,6 +215,7 @@
     editedKeys = {};
     undoStack = [];
     redoStack = [];
+    chipMap = null;
     try {
       result = await window.api.convertRtf({ path: sourcePath });
       // A fresh conversion supersedes any pending restore offer for
@@ -276,19 +303,21 @@
   function handleUndo() {
     if (!undoStack.length) return;
     const prev = undoStack[undoStack.length - 1];
-    redoStack = [...redoStack, { rtf: result.converted.rtf, editedKeys: { ...editedKeys } }];
+    redoStack = [...redoStack, { rtf: result.converted.rtf, editedKeys: { ...editedKeys }, chipMap }];
     undoStack = undoStack.slice(0, -1);
     result.converted.rtf = prev.rtf;
     editedKeys = prev.editedKeys;
+    chipMap = prev.chipMap ?? null;
   }
 
   function handleRedo() {
     if (!redoStack.length) return;
     const next = redoStack[redoStack.length - 1];
-    undoStack = [...undoStack, { rtf: result.converted.rtf, editedKeys: { ...editedKeys } }];
+    undoStack = [...undoStack, { rtf: result.converted.rtf, editedKeys: { ...editedKeys }, chipMap }];
     redoStack = redoStack.slice(0, -1);
     result.converted.rtf = next.rtf;
     editedKeys = next.editedKeys;
+    chipMap = next.chipMap ?? null;
   }
 
   function acceptRecovery() {
@@ -296,6 +325,7 @@
     const snap = recoveryOffer.snapshot;
     if (snap.result) result = snap.result;
     if (snap.editedKeys) editedKeys = snap.editedKeys;
+    chipMap = snap.chipMap ?? null;
     recoveryOffer = null;
     // The snapshot we just loaded is identical to what's on disk;
     // auto-save will re-trigger from the $effect but write the same
@@ -330,6 +360,7 @@
         const payload = JSON.parse(JSON.stringify({
           result,
           editedKeys,
+          chipMap,
         }));
         const r = await window.api.saveRecovery({ sourcePath, payload });
         if (r?.ok) {
@@ -405,9 +436,22 @@
   }
 
   function stripRtf(s) {
-    if (!s) return "";
+    return stripRtfWithMap(s).text;
+  }
+
+  /**
+   * Like ``stripRtf`` but also returns ``map`` — an array where
+   * ``map[k]`` is the index in ``s`` of the source token that produced
+   * the k-th output character, and ``map[text.length]`` is ``s.length``.
+   * Used to translate a caret position in the rendered (stripped) prose
+   * back to a safe insertion offset in the raw RTF. Every emit below is
+   * a single character, so each push corresponds to one output char.
+   */
+  function stripRtfWithMap(s) {
+    if (!s) return { text: "", map: [0] };
     const len = s.length;
     let out = "";
+    const map = [];
     let i = 0;
     let depth = 0;
     let skipUntilDepth = -1;
@@ -444,13 +488,13 @@
       if (c === "\\") {
         const next = s[i + 1];
         if (next === "\\" || next === "{" || next === "}") {
-          out += next; i += 2; continue;
+          out += next; map.push(i); i += 2; continue;
         }
         if (next === "'") {
           const hex = s.substr(i + 2, 2);
           if (/^[0-9a-fA-F]{2}$/.test(hex)) {
             out += String.fromCharCode(parseInt(hex, 16));
-            i += 4; continue;
+            map.push(i); i += 4; continue;
           }
           i += 2; continue;
         }
@@ -464,6 +508,7 @@
             let code = parseInt(sign + num, 10);
             if (code < 0) code += 0x10000;
             out += String.fromCharCode(code);
+            map.push(i);
             if (s[j] === "?") j++;
             else if (s[j] === " ") j++;
             else if (s[j] && !/[\\{}]/.test(s[j])) j++;
@@ -480,16 +525,17 @@
           }
           if (s[j] === " ") j++;
           const repl = RTF_CONTROL_TO_TEXT[name];
-          if (repl !== undefined) out += repl;
+          if (repl !== undefined) { out += repl; map.push(i); }
           i = j; continue;
         }
         i += 2; continue;
       }
       if (c === "\r" || c === "\n") { i++; continue; }
-      out += c;
+      out += c; map.push(i);
       i++;
     }
-    return out;
+    map.push(len);   // sentinel: caret at end of text → end of slice
+    return { text: out, map };
   }
 
   function tokenize(text) {
@@ -583,12 +629,20 @@
       }
       if (part.kind === "prose") {
         const lines = (part.text || "").split("\n");
+        // ``lineStart`` is the offset of this line within the part's
+        // stripped text (counting the \n separators consumed). It lets
+        // a caret in this rendered line map back to a raw-RTF offset.
+        let acc = 0;
         lines.forEach((line, i) => {
           if (i > 0) {
             cur = [];
             paragraphs.push(cur);
+            acc += 1;   // the "\n" that split() removed
           }
-          if (line.length > 0) cur.push({ kind: "prose", text: line });
+          if (line.length > 0) {
+            cur.push({ kind: "prose", text: line, partIdx: idx, lineStart: acc });
+          }
+          acc += line.length;
         });
       } else {
         cur.push({ kind: "chip", idx });
@@ -857,7 +911,62 @@
     if (chipIdx < 0) return null;
     const offset = chipIdx - preludePineCount;
     if (offset < 0) return null;
-    return pineChipInfo[offset] || null;
+    // With no structural edits the mapping is the identity; once a chip
+    // has been inserted/deleted, chipMap re-aligns positions to segments.
+    const mapped = chipMap
+      ? (offset < chipMap.length ? chipMap[offset] : null)
+      : offset;
+    if (mapped == null) return null;
+    return pineChipInfo[mapped] || null;
+  }
+
+  // A mutable copy of the current chip→segment map, materialised to the
+  // identity mapping the first time a structural edit needs one.
+  function materializeChipMap() {
+    if (chipMap) return [...chipMap];
+    return Array.from({ length: pineChipInfo.length }, (_, k) => k);
+  }
+
+  // Post-prelude flat chip index for an RTF offset: how many body Pine
+  // chips start before ``off``. Used to keep chipMap aligned with splices.
+  function postPreludeIndexForOffset(off) {
+    let pineBefore = 0;
+    for (const p of pineParts) {
+      if (p.kind === "pine" && p.start < off) pineBefore++;
+    }
+    return Math.max(0, pineBefore - preludePineCount);
+  }
+
+  // Distinct legacy (JDA) tokens present in this document, in first-seen
+  // order. Feeds the "tie to a legacy var" picker in the add-mapping
+  // dialog so the converter can pick a real source rather than retype it.
+  let legacyVarOptions = $derived.by(() => {
+    const seen = new Set();
+    const out = [];
+    for (const seg of result?.segments || []) {
+      for (const t of seg.jda_tokens || []) {
+        if (t && !seen.has(t)) { seen.add(t); out.push(t); }
+      }
+    }
+    return out;
+  });
+
+  // Best-guess legacy var for an insertion offset: the legacy source of
+  // the Pine chip nearest the insertion point. Used to pre-select the
+  // dropdown — a var added next to existing content most likely shares
+  // that content's source. Returns null if nothing nearby has a source.
+  function mostLikelyLegacyForOffset(off) {
+    let best = null;
+    let bestDist = Infinity;
+    for (let i = 0; i < pineParts.length; i++) {
+      const p = pineParts[i];
+      if (p.kind !== "pine") continue;
+      const jda = segmentForPinePart(i)?.segment?.jda_tokens;
+      if (!jda?.length) continue;
+      const dist = Math.min(Math.abs(p.start - off), Math.abs(p.end - off));
+      if (dist < bestDist) { bestDist = dist; best = jda[0]; }
+    }
+    return best;
   }
 
   function formatClock(ms) {
@@ -890,28 +999,24 @@
   let statsLine = $derived.by(() => {
     if (!result) return "Open an RTF to begin.";
     const t = result.totals;
-    return `${t.jda_tokens} JDA → ${t.pine_tokens} Pine  ·  ${t.suggestion_segments} saved  ·  ${t.llm_segments} LLM  ·  ${t.unmatched_segments} unmatched  ·  ${result.issues.length} issue${result.issues.length === 1 ? "" : "s"}`;
+    return `${t.jda_tokens} JDA → ${t.pine_tokens} Pine  ·  ${t.suggestion_segments} saved  ·  ${t.llm_segments} LLM  ·  ${t.unmatched_segments} unmatched`;
   });
 
   // ── inline editing ──────────────────────────────────────────────
 
   function startEdit(partIndex, event) {
     const info = segmentForPinePart(partIndex);
-    if (info) {
-      // Pin the legacy-side highlight to this segment while editing.
-      highlightedSegmentIndex = info.segment.index;
-      // Show the hover info card anchored to the chip, so the
-      // converter can see provenance / JDA source while typing. No
-      // dwell delay here — the user has committed to editing.
-      const target = event?.currentTarget;
-      if (target?.getBoundingClientRect) {
-        hoverInfo = buildHoverPayload(target.getBoundingClientRect(), info);
-      }
-    } else {
-      // Prelude chip or other no-segment chip — no source info to show.
-      hoverInfo = null;
-      highlightedSegmentIndex = null;
-    }
+    // Pin the legacy-side highlight to this segment while editing (only
+    // if there is one — manually-added chips have no backing segment).
+    highlightedSegmentIndex = info ? info.segment.index : null;
+    // Anchor the info card to the chip so the converter sees the source
+    // while typing, and so Delete is reachable. No dwell delay — the
+    // user has committed to editing. For no-segment chips this is a bare
+    // card carrying only the Delete control.
+    const target = event?.currentTarget;
+    hoverInfo = target?.getBoundingClientRect
+      ? buildHoverPayload(target.getBoundingClientRect(), info)
+      : null;
     editingChip = { partIndex };
   }
 
@@ -955,24 +1060,18 @@
     highlightedSegmentIndex = null;
   }
 
-  function applyPineEdit(partIndex, part, newText, scope) {
-    // Snapshot before mutating so undo can restore.
-    undoStack = [...undoStack, { rtf: result.converted.rtf, editedKeys: { ...editedKeys } }];
-    redoStack = [];
-
-    const sourceInfo = segmentForPinePart(partIndex);
-
-    // Without a segment mapping or a usable source JDA, just splice
-    // the one chip in place — no propagation, no persist.
-    if (!sourceInfo || !sourceInfo.segment.jda_tokens?.length) {
-      const rtf = result.converted.rtf;
-      result.converted.rtf = rtf.slice(0, part.start) + newText + rtf.slice(part.end);
-      return;
-    }
-
+  /**
+   * Every Pine chip in the current document that shares the chip at
+   * ``partIndex``'s JDA source AND currently shows the same Pine text —
+   * i.e. the chip plus its identical twins. Each entry is
+   * ``{ start, end, segIdx, tokIdx }`` and the origin chip is always
+   * first. Shared by inline edit and delete so a change to one
+   * occurrence propagates to the rest.
+   */
+  function matchingPineChips(partIndex, sourceInfo) {
     const sourceSeg = sourceInfo.segment;
-    const originalPine = sourceSeg.pine_tokens?.[sourceInfo.tokenIndex] ?? part.text;
-
+    const originalPine =
+      sourceSeg.pine_tokens?.[sourceInfo.tokenIndex] ?? pineParts[partIndex]?.text;
     const matches = [];
     for (let i = 0; i < pineParts.length; i++) {
       const p = pineParts[i];
@@ -994,6 +1093,26 @@
         segIdx: info.segment.index, tokIdx: info.tokenIndex,
       });
     }
+    return matches;
+  }
+
+  function applyPineEdit(partIndex, part, newText, scope) {
+    // Snapshot before mutating so undo can restore.
+    undoStack = [...undoStack, { rtf: result.converted.rtf, editedKeys: { ...editedKeys }, chipMap }];
+    redoStack = [];
+
+    const sourceInfo = segmentForPinePart(partIndex);
+
+    // Without a segment mapping or a usable source JDA, just splice
+    // the one chip in place — no propagation, no persist.
+    if (!sourceInfo || !sourceInfo.segment.jda_tokens?.length) {
+      const rtf = result.converted.rtf;
+      result.converted.rtf = rtf.slice(0, part.start) + newText + rtf.slice(part.end);
+      return;
+    }
+
+    const sourceSeg = sourceInfo.segment;
+    const matches = matchingPineChips(partIndex, sourceInfo);
 
     let rtf = result.converted.rtf;
     for (let i = matches.length - 1; i >= 0; i--) {
@@ -1061,6 +1180,265 @@
     return { kind: "global", value: "" };
   }
 
+  /**
+   * Delete a Pine var entirely: remove the chip (and its identical
+   * twins) from the document and persist a *drop* — an empty-rewrite
+   * suggestion tied to the chip's legacy var — so the same JDA source
+   * produces nothing on the next conversion. Chips with no JDA source
+   * (e.g. prelude) are spliced out locally but not persisted.
+   */
+  function deletePineVar(partIndex) {
+    undoStack = [...undoStack, { rtf: result.converted.rtf, editedKeys: { ...editedKeys }, chipMap }];
+    redoStack = [];
+
+    const sourceInfo = segmentForPinePart(partIndex);
+    const part = pineParts[partIndex];
+
+    if (!sourceInfo || !sourceInfo.segment.jda_tokens?.length) {
+      if (part) {
+        // Drop this single chip from the map and the document.
+        const m = materializeChipMap();
+        const flat = postPreludeIndexForOffset(part.start);
+        if (flat >= 0 && flat < m.length) { m.splice(flat, 1); chipMap = m; }
+        const rtf = result.converted.rtf;
+        result.converted.rtf = rtf.slice(0, part.start) + rtf.slice(part.end);
+      }
+      editingChip = null;
+      hoverInfo = null;
+      highlightedSegmentIndex = null;
+      return;
+    }
+
+    const sourceSeg = sourceInfo.segment;
+    const matches = matchingPineChips(partIndex, sourceInfo);
+
+    // Re-align the chip→segment map: remove every deleted chip's slot,
+    // descending so earlier indices stay valid as later ones are cut.
+    const m = materializeChipMap();
+    const flatIdxs = matches
+      .map((mt) => postPreludeIndexForOffset(mt.start))
+      .sort((a, b) => b - a);
+    for (const fi of flatIdxs) {
+      if (fi >= 0 && fi < m.length) m.splice(fi, 1);
+    }
+    chipMap = m;
+
+    // Splice each occurrence out, right-to-left so earlier offsets stay
+    // valid as later ones are removed.
+    let rtf = result.converted.rtf;
+    for (let i = matches.length - 1; i >= 0; i--) {
+      const mt = matches[i];
+      rtf = rtf.slice(0, mt.start) + rtf.slice(mt.end);
+    }
+    result.converted.rtf = rtf;
+
+    const matchKeys = matches.map((m) => `${m.segIdx}/${m.tokIdx}`);
+    const baseKeys = { ...editedKeys };
+    for (const k of matchKeys) baseKeys[k] = { status: "pending" };
+    editedKeys = baseKeys;
+
+    editingChip = null;
+    hoverInfo = null;
+    highlightedSegmentIndex = null;
+
+    const effectiveScope = defaultScope();
+    if (!effectiveScope) return;
+
+    const droppedCount = matches.length - 1;
+    const noteBits = [`deleted via converter_app (drop, scope=${effectiveScope.kind})`];
+    if (droppedCount > 0) {
+      noteBits.push(`removed ${droppedCount} other occurrence${droppedCount === 1 ? "" : "s"}`);
+    }
+
+    const payload = {
+      org: result.org || "oba",
+      scope: { kind: effectiveScope.kind, value: effectiveScope.value ?? "" },
+      jda_tokens: Array.from(sourceSeg.jda_tokens || []),
+      pine_tokens: [],   // empty rewrite = drop the mapping
+      source_template: result.template_name,
+      segment_index: sourceSeg.index,
+      note: noteBits.join("; "),
+    };
+    window.api.persistEdit(payload).then((r) => {
+      const update = { ...editedKeys };
+      const status = r?.ok
+        ? { status: "saved" }
+        : { status: "error", error: r?.error || "unknown" };
+      for (const k of matchKeys) update[k] = status;
+      editedKeys = update;
+      if (!r?.ok) console.warn("persist (drop) failed:", r);
+    }).catch((e) => {
+      const update = { ...editedKeys };
+      for (const k of matchKeys) {
+        update[k] = { status: "error", error: String(e?.message || e) };
+      }
+      editedKeys = update;
+      console.warn("persist (drop) threw:", e);
+    });
+  }
+
+  // ── add a new mapping (right-click → insert at caret) ───────────
+  /**
+   * Translate a viewport point into a safe insertion descriptor for the
+   * converted RTF: ``{ rtfOffset, x, y, height }``. Resolves the caret
+   * under the cursor, finds the rendered chip/prose element it lands in
+   * (tagged with ``data-part-idx``), and maps it to a raw-RTF offset
+   * that never lands inside an RTF control word. Returns null if the
+   * point isn't over insertable content.
+   */
+  function insertPointFromXY(clientX, clientY) {
+    let node = null;
+    let offset = 0;
+    if (document.caretPositionFromPoint) {
+      const pos = document.caretPositionFromPoint(clientX, clientY);
+      if (!pos) return null;
+      node = pos.offsetNode;
+      offset = pos.offset;
+    } else if (document.caretRangeFromPoint) {
+      const r = document.caretRangeFromPoint(clientX, clientY);
+      if (!r) return null;
+      node = r.startContainer;
+      offset = r.startOffset;
+    } else {
+      return null;
+    }
+
+    const el = node.nodeType === 3 ? node.parentElement : node;
+    const host = el?.closest?.("[data-part-idx]");
+    if (!host) return null;
+    const partIdx = Number(host.dataset.partIdx);
+    const part = pineParts[partIdx];
+    if (!part) return null;
+
+    const rect = host.getBoundingClientRect();
+
+    // Chips are atomic — snap to the side the cursor is closest to.
+    if (part.kind === "pine" || part.kind === "legacy") {
+      const after = clientX > rect.left + rect.width / 2;
+      return {
+        rtfOffset: after ? part.end : part.start,
+        x: after ? rect.right : rect.left,
+        y: rect.top,
+        height: rect.height,
+      };
+    }
+
+    // Prose: map the caret's stripped-text index to a raw offset.
+    const lineStart = Number(host.dataset.lineStart || 0);
+    const slice = result.converted.rtf.slice(part.start, part.end);
+    const { map } = stripRtfWithMap(slice);
+    const strippedIdx = Math.min(lineStart + offset, map.length - 1);
+    const rtfOffset = part.start + map[strippedIdx];
+
+    // Caret pixel position for the visible bar.
+    let cx = rect.left;
+    let cy = rect.top;
+    let ch = rect.height;
+    try {
+      const range = document.createRange();
+      range.setStart(node, offset);
+      range.collapse(true);
+      const cr = range.getClientRects()[0] || range.getBoundingClientRect();
+      if (cr) { cx = cr.left; cy = cr.top; ch = cr.height || rect.height; }
+    } catch { /* fall back to host rect */ }
+
+    return { rtfOffset, x: cx, y: cy, height: ch };
+  }
+
+  function onPineContextMenu(e) {
+    if (!result?.converted?.rtf || editingChip) return;
+    const point = insertPointFromXY(e.clientX, e.clientY);
+    if (!point) return;            // not over insertable content
+    e.preventDefault();
+    insertAt = point;
+    pineContextMenu = { x: e.clientX, y: e.clientY };
+  }
+
+  function closeContextMenu() {
+    pineContextMenu = null;
+    // Only drop the caret if the add dialog isn't taking over.
+    if (!addingVar) insertAt = null;
+  }
+
+  function chooseAddVarHere() {
+    pineContextMenu = null;
+    if (!insertAt) return;
+    addingVar = {
+      pineText: "",
+      legacyToken: mostLikelyLegacyForOffset(insertAt.rtfOffset) || legacyVarOptions[0] || "",
+      status: null,
+      error: "",
+    };
+  }
+
+  function cancelAddVar() {
+    addingVar = null;
+    insertAt = null;
+  }
+
+  /**
+   * Insert the new Pine var at the chosen caret offset and persist the
+   * legacy→Pine mapping as a scoped suggestion for future conversions.
+   */
+  function confirmAddVar() {
+    if (!addingVar || !insertAt) return;
+    const legacy = (addingVar.legacyToken || "").trim();
+    const inner = (addingVar.pineText || "")
+      .trim()
+      .replace(/@\[([^\]]*)\]/g, "$1")
+      .replace(/^@\[/, "")
+      .replace(/\]+$/, "");
+
+    if (!legacy) {
+      addingVar = { ...addingVar, status: "error", error: "Pick a legacy variable to tie this to." };
+      return;
+    }
+    if (!inner) {
+      addingVar = { ...addingVar, status: "error", error: "Enter the Pine variable text." };
+      return;
+    }
+    const effectiveScope = defaultScope();
+    if (!effectiveScope) {
+      addingVar = { ...addingVar, status: "error", error: "No scope available to save against." };
+      return;
+    }
+
+    const chip = `@[${inner}]`;
+    const off = insertAt.rtfOffset;
+    addingVar = { ...addingVar, status: "saving", error: "" };
+    const payload = {
+      org: result.org || "oba",
+      scope: { kind: effectiveScope.kind, value: effectiveScope.value ?? "" },
+      jda_tokens: [legacy],
+      pine_tokens: [chip],
+      source_template: result.template_name,
+      note: `new mapping inserted via converter_app (scope=${effectiveScope.kind})`,
+    };
+    // Persist first; only splice into the document once the mapping is
+    // saved, so a persist failure leaves the form open to retry without
+    // inserting the chip twice.
+    window.api.persistEdit(payload).then((r) => {
+      if (r?.ok) {
+        undoStack = [...undoStack, { rtf: result.converted.rtf, editedKeys: { ...editedKeys }, chipMap }];
+        redoStack = [];
+        // Re-align the map: the new chip occupies a fresh slot with no
+        // backing segment (null) at its post-prelude position.
+        const m = materializeChipMap();
+        const p = postPreludeIndexForOffset(off);
+        m.splice(Math.min(Math.max(p, 0), m.length), 0, null);
+        chipMap = m;
+        const rtf = result.converted.rtf;
+        result.converted.rtf = rtf.slice(0, off) + chip + rtf.slice(off);
+        addingVar = null;
+        insertAt = null;
+      } else {
+        addingVar = { ...addingVar, status: "error", error: r?.error || "save failed" };
+      }
+    }).catch((e) => {
+      addingVar = { ...addingVar, status: "error", error: String(e?.message || e) };
+    });
+  }
+
   function editStateForPart(partIndex) {
     const info = segmentForPinePart(partIndex);
     if (!info) return null;
@@ -1082,6 +1460,11 @@
       y = Math.max(margin, rect.top - CARD_H_EST - 6);
     } else {
       y = rect.bottom + 6;
+    }
+    // A manually-added chip has no backing segment — return a bare card
+    // (position only) so the editing flow can still offer Delete.
+    if (!info) {
+      return { x, y, segment: null, tokenIndex: -1, editState: null };
     }
     const key = `${info.segment.index}/${info.tokenIndex}`;
     return {
@@ -1299,7 +1682,8 @@
       {#if busy}
         <div class="progress-bar" role="progressbar" aria-label="Converting"></div>
       {/if}
-      <div class="pane-stage">
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="pane-stage" oncontextmenu={onPineContextMenu}>
         {#if pineParts.length === 0}
           <article class="paper paginated" data-section-height={PAGE_HEIGHT} style="max-width: 816px">
             <div class="empty">
@@ -1372,6 +1756,7 @@
                   class:edited={editState?.status === "saved"}
                   class:saving={editState?.status === "pending"}
                   class:save-error={editState?.status === "error"}
+                  data-part-idx={i}
                   role="button"
                   tabindex="0"
                   onclick={(e) => startEdit(i, e)}
@@ -1388,10 +1773,10 @@
                 >{part.text}</span>
               {/if}
             {:else}
-              <span class="token-legacy" title="JDA source token (read-only)">{part.text}</span>
+              <span class="token-legacy" data-part-idx={i} title="JDA source token (read-only)">{part.text}</span>
             {/if}
           {:else}
-            <span>{item.text}</span>
+            <span class="prose-run" data-part-idx={item.partIdx} data-line-start={item.lineStart}>{item.text}</span>
           {/if}
         {/each}
       </p>
@@ -1400,33 +1785,30 @@
 
   <!-- ── Hover info card ─────────────────────────────────── -->
   {#if hoverInfo}
-    <div class="info-card" style="left: {hoverInfo.x}px; top: {hoverInfo.y}px;">
-      <div class="info-row">
-        <span class="info-label">Provenance</span>
-        <span class="info-value prov-{hoverInfo.segment.provenance}">
-          {provLabel(hoverInfo.segment.provenance)}
-        </span>
-      </div>
-      {#if hoverInfo.segment.pattern_id}
+    <div class="info-card" class:interactive={!!editingChip} style="left: {hoverInfo.x}px; top: {hoverInfo.y}px;">
+      {#if hoverInfo.segment}
         <div class="info-row">
-          <span class="info-label">Pattern</span>
-          <span class="info-value mono">{hoverInfo.segment.pattern_id}</span>
-        </div>
-      {/if}
-      {#if hoverInfo.segment.jda_tokens?.length}
-        <div class="info-row">
-          <span class="info-label">Source</span>
-          <span class="info-value mono">{hoverInfo.segment.jda_tokens.join("  ")}</span>
-        </div>
-      {/if}
-      {#if hoverInfo.segment.issues?.length}
-        <div class="info-row info-issues">
-          <span class="info-label">Issues</span>
-          <span class="info-value">
-            {#each hoverInfo.segment.issues as issue}
-              <div class="issue-line">⚠ {issue.message || issue}</div>
-            {/each}
+          <span class="info-label">Origin</span>
+          <span class="info-value prov-{hoverInfo.segment.provenance}">
+            {provLabel(hoverInfo.segment.provenance)}
           </span>
+        </div>
+        {#if hoverInfo.segment.pattern_id}
+          <div class="info-row">
+            <span class="info-label">Pattern</span>
+            <span class="info-value mono">{hoverInfo.segment.pattern_id}</span>
+          </div>
+        {/if}
+        {#if hoverInfo.segment.jda_tokens?.length}
+          <div class="info-row">
+            <span class="info-label">Source</span>
+            <span class="info-value mono">{hoverInfo.segment.jda_tokens.join("  ")}</span>
+          </div>
+        {/if}
+      {:else if editingChip}
+        <div class="info-row">
+          <span class="info-label">Origin</span>
+          <span class="info-value prov-edit">Added</span>
         </div>
       {/if}
       {#if hoverInfo.editState}
@@ -1443,6 +1825,98 @@
           </span>
         </div>
       {/if}
+      {#if editingChip}
+        <div class="info-row info-actions">
+          <!-- mousedown + preventDefault so clicking this doesn't blur
+               the contenteditable (which would commit an edit) before
+               the delete lands. -->
+          <button
+            class="info-delete-btn"
+            onmousedown={(e) => { e.preventDefault(); deletePineVar(editingChip.partIndex); }}
+            title="Remove this Pine variable from the document"
+          >✕ Delete</button>
+        </div>
+      {/if}
+    </div>
+  {/if}
+
+  <!-- ── Insertion caret (shows where a new var will land) ── -->
+  {#if insertAt}
+    <div
+      class="insert-caret"
+      style="left: {insertAt.x}px; top: {insertAt.y}px; height: {insertAt.height}px;"
+      aria-hidden="true"
+    ></div>
+  {/if}
+
+  <!-- ── Pine pane right-click menu ────────────────────────── -->
+  {#if pineContextMenu}
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+    <div class="context-backdrop" oncontextmenu={(e) => { e.preventDefault(); closeContextMenu(); }} onclick={closeContextMenu}>
+      <div class="context-menu" style="left: {pineContextMenu.x}px; top: {pineContextMenu.y}px;">
+        <button class="context-item" onclick={chooseAddVarHere}>Add variable here…</button>
+      </div>
+    </div>
+  {/if}
+
+  <!-- ── Add-mapping dialog ───────────────────────────────── -->
+  {#if addingVar}
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+    <div class="modal-backdrop" onclick={cancelAddVar}>
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+      <div class="add-modal" onclick={(e) => e.stopPropagation()}>
+        <h3 class="add-title">Add a Pine variable</h3>
+        <p class="add-sub">
+          Inserts at the cursor and ties it to a legacy variable. Also saved
+          as a <strong>{defaultScope()?.kind}</strong> suggestion so the same
+          mapping applies on future conversions.
+        </p>
+
+        <label class="add-field">
+          <span class="add-label">Legacy variable</span>
+          <select
+            class="add-input add-select mono"
+            bind:value={addingVar.legacyToken}
+            onkeydown={(e) => { if (e.key === "Escape") cancelAddVar(); }}
+          >
+            {#if !legacyVarOptions.length}
+              <option value="" disabled>No legacy variables in this document</option>
+            {/if}
+            {#each legacyVarOptions as opt}
+              <option value={opt}>{opt}</option>
+            {/each}
+          </select>
+        </label>
+
+        <label class="add-field">
+          <span class="add-label">Pine variable</span>
+          <div class="add-pine-wrap">
+            <span class="add-bracket">@[</span>
+            <input
+              class="add-input mono add-pine-input"
+              placeholder="Complainant.first.NameFirst"
+              spellcheck="false"
+              bind:value={addingVar.pineText}
+              onkeydown={(e) => {
+                if (e.key === "Enter") { e.preventDefault(); confirmAddVar(); }
+                else if (e.key === "Escape") cancelAddVar();
+              }}
+            />
+            <span class="add-bracket">]</span>
+          </div>
+        </label>
+
+        {#if addingVar.status === "error"}
+          <div class="add-error">⚠ {addingVar.error}</div>
+        {/if}
+
+        <div class="add-actions">
+          <button class="btn-ghost" onclick={cancelAddVar} disabled={addingVar.status === "saving"}>Cancel</button>
+          <button class="btn-primary" onclick={confirmAddVar} disabled={addingVar.status === "saving"}>
+            {addingVar.status === "saving" ? "Saving…" : "Add mapping"}
+          </button>
+        </div>
+      </div>
     </div>
   {/if}
 
@@ -1964,7 +2438,7 @@
     max-height: calc(100vh - 80px);
     /* The card itself is pointer-events:none (so it doesn't intercept
      * hover state on the chip underneath), but very tall content can
-     * still scroll if the user hovers a chip-with-many-issues.
+     * still scroll if the user hovers a chip with a lot of detail.
      * pointer-events:auto on the body lets the scrollbar work. */
     overflow-y: auto;
     line-height: 1.5;
@@ -2011,11 +2485,153 @@
   .prov-llm        { color: #c084fc; }
   .prov-unmatched  { color: #f87171; }
   .prov-edit       { color: #fbbf24; }
-  .info-issues .info-value { color: #f87171; }
-  .issue-line { font-size: 11.5px; margin-bottom: 2px; }
   .status-saved   { color: #fbbf24; }
   .status-pending { color: #9ca3b8; font-style: italic; }
   .status-error   { color: #f87171; }
+
+  /* While editing, the card is pinned and needs to receive clicks
+     (the Delete button). Hover-only cards stay pointer-events:none. */
+  .info-card.interactive { pointer-events: auto; }
+  .info-actions {
+    margin-top: 6px;
+    padding-top: 8px;
+    border-top: 1px solid #2a2d3a;
+  }
+  .info-delete-btn {
+    appearance: none;
+    background: rgba(248, 113, 113, 0.10);
+    color: #f87171;
+    border: 1px solid rgba(248, 113, 113, 0.35);
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .info-delete-btn:hover {
+    background: rgba(248, 113, 113, 0.18);
+    border-color: rgba(248, 113, 113, 0.55);
+  }
+
+  /* ── Add-mapping dialog ────────────────────────────────── */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .add-modal {
+    width: 440px;
+    max-width: calc(100vw - 32px);
+    background: #11121a;
+    border: 1px solid #2a2d3a;
+    border-radius: 8px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+    padding: 18px 20px 16px;
+    color: #e6e8ef;
+  }
+  .add-title { margin: 0 0 6px; font-size: 15px; font-weight: 600; }
+  .add-sub {
+    margin: 0 0 16px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #9ca3b8;
+  }
+  .add-sub strong { color: #5eead4; font-weight: 600; }
+  .add-field { display: block; margin-bottom: 14px; }
+  .add-label {
+    display: block;
+    margin-bottom: 5px;
+    color: #6b7488;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    font-size: 10px;
+    font-weight: 600;
+  }
+  .add-input {
+    width: 100%;
+    background: #0b0c12;
+    border: 1px solid #2a2d3a;
+    border-radius: 5px;
+    padding: 7px 9px;
+    color: #e6e8ef;
+    font-size: 12.5px;
+  }
+  .add-input:focus {
+    outline: none;
+    border-color: #5eead4;
+  }
+  .add-input.mono { font-family: "JetBrains Mono", "SF Mono", monospace; }
+  .add-select { cursor: pointer; }
+  .add-select option { background: #0b0c12; color: #e6e8ef; }
+  .add-pine-wrap {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .add-pine-input { flex: 1 1 auto; }
+  .add-bracket {
+    color: #5eead4;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .add-error {
+    margin: -4px 0 12px;
+    font-size: 12px;
+    color: #f87171;
+  }
+  .add-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  /* ── Insertion caret + right-click menu ────────────────── */
+  .insert-caret {
+    position: fixed;
+    z-index: 35;
+    width: 2px;
+    background: #5eead4;
+    box-shadow: 0 0 4px rgba(94, 234, 212, 0.7);
+    pointer-events: none;
+    animation: caret-blink 1s steps(1) infinite;
+  }
+  @keyframes caret-blink {
+    50% { opacity: 0; }
+  }
+  .context-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 46;
+  }
+  .context-menu {
+    position: fixed;
+    min-width: 160px;
+    background: #11121a;
+    border: 1px solid #2a2d3a;
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    padding: 4px;
+  }
+  .context-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    appearance: none;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    padding: 7px 10px;
+    color: #e6e8ef;
+    font-size: 12.5px;
+    cursor: pointer;
+  }
+  .context-item:hover { background: rgba(94, 234, 212, 0.14); color: #5eead4; }
 
   /* ── Footer ───────────────────────────────────────────── */
   footer {
@@ -2037,7 +2653,7 @@
   }
   .stats {
     font-family: "JetBrains Mono", monospace;
-    font-size: 11px;
+    font-size: 12px;
     color: #6b7488;
   }
 
