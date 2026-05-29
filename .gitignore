@@ -96,3 +96,6 @@ converter_app/binaries/
 test-results/
 playwright-report/
 **/.last-run.json
+
+# Claude IDE tooling state
+.claude/

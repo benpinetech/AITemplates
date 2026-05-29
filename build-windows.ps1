@@ -44,7 +44,7 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
     throw "Node.js not found on PATH. Install from https://nodejs.org/ and re-run."
 }
 
-$py = Resolve-Python
+$py = @(Resolve-Python)
 Write-Host "==> Using Python: $($py -join ' ')" -ForegroundColor Cyan
 
 # ── 1-2. Clean build venv + minimal deps ─────────────────────────────
@@ -54,7 +54,9 @@ if (Test-Path $venv) {
     Remove-Item -Recurse -Force $venv
 }
 Write-Host "==> Creating build venv" -ForegroundColor Cyan
-& $py[0] $py[1..($py.Length-1)] -m venv $venv
+$pyExe  = $py[0]
+$pyArgs = if ($py.Length -gt 1) { $py[1..($py.Length-1)] } else { @() }
+& $pyExe @pyArgs -m venv $venv
 
 $venvPython = Join-Path $venv "Scripts\python.exe"
 Write-Host "==> Installing sidecar deps + PyInstaller" -ForegroundColor Cyan
@@ -73,7 +75,10 @@ if (-not (Test-Path $sidecarExe)) { throw "Expected $sidecarExe was not produced
 
 # Quick smoke test: the binary must at least start and print its usage.
 Write-Host "==> Smoke-testing sidecar binary" -ForegroundColor Cyan
+$ErrorActionPreference = "Continue"
 & $sidecarExe 2>&1 | Out-Null   # no args -> prints usage, exits 1; just proves it runs
+$ErrorActionPreference = "Stop"
+if ($LASTEXITCODE -gt 1) { throw "Sidecar smoke test failed with exit code $LASTEXITCODE." }
 
 # ── 4. Stage the bundle for electron-builder ──────────────────────────
 $binaries = "converter_app\binaries"
@@ -91,6 +96,34 @@ try {
         if ($LASTEXITCODE -ne 0) { npm install; if ($LASTEXITCODE -ne 0) { throw "npm install failed" } }
     }
     Write-Host "==> Building Windows installer (electron-builder)" -ForegroundColor Cyan
+    # Pre-populate winCodeSign cache to avoid symlink-creation privilege failure.
+    # electron-builder's 7-zip uses -snl which tries to create real Windows symlinks
+    # for macOS dylib symlinks in the archive — fails without admin/Developer Mode.
+    # We pre-extract WITHOUT -snl so those entries are skipped harmlessly.
+    $winCodeSignVer = "2.6.0"
+    $winCodeSignFinal = Join-Path $env:LOCALAPPDATA "electron-builder\Cache\winCodeSign\winCodeSign-$winCodeSignVer"
+    if (-not (Test-Path $winCodeSignFinal)) {
+        Write-Host "==> Pre-caching winCodeSign $winCodeSignVer (no-symlink extraction)" -ForegroundColor Cyan
+        $sevenZip = Join-Path $PSScriptRoot "converter_app\node_modules\7zip-bin\win\x64\7za.exe"
+        $archiveUrl = "https://github.com/electron-userland/electron-builder-binaries/releases/download/winCodeSign-$winCodeSignVer/winCodeSign-$winCodeSignVer.7z"
+        $archiveTmp = Join-Path $env:TEMP "winCodeSign-$winCodeSignVer.7z"
+        Invoke-WebRequest -Uri $archiveUrl -OutFile $archiveTmp
+        $extractTmp = Join-Path $env:TEMP "winCodeSign-extract-$winCodeSignVer"
+        if (Test-Path $extractTmp) { Remove-Item -Recurse -Force $extractTmp }
+        # x = extract, -y = yes to all, -bd = no progress, NO -snl so symlinks become regular files
+        $ErrorActionPreference = "Continue"
+        & $sevenZip x -y -bd $archiveTmp "-o$extractTmp" | Out-Null
+        $ErrorActionPreference = "Stop"
+        New-Item -ItemType Directory -Force -Path (Split-Path $winCodeSignFinal) | Out-Null
+        Move-Item $extractTmp $winCodeSignFinal
+        Remove-Item $archiveTmp -Force
+    }
+    # Clear any partial/failed cache entries from previous attempts
+    Get-ChildItem (Join-Path $env:LOCALAPPDATA "electron-builder\Cache\winCodeSign") -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -ne "winCodeSign-$winCodeSignVer" } |
+        Remove-Item -Recurse -Force
+    $env:CSC_IDENTITY_AUTO_DISCOVERY = "false"
+    $env:WIN_CSC_LINK = ""
     npm run build:win
     if ($LASTEXITCODE -ne 0) { throw "electron-builder failed" }
 }
