@@ -5,6 +5,9 @@ REM Launch the JDA -> Pine converter on Windows.
 REM On first run: creates the venv, installs Python deps, installs npm deps.
 REM On subsequent runs: just starts the Electron app.
 
+REM Ensure essential Windows dirs are on PATH (guards against broken machine PATH registry).
+set "PATH=C:\Windows\System32;C:\Windows;C:\Windows\System32\Wbem;C:\Program Files\nodejs;%PATH%"
+
 cd /d "%~dp0"
 
 where node >nul 2>nul
@@ -29,41 +32,33 @@ if not exist "venv\Scripts\python.exe" (
 if not exist "converter_app\node_modules" (
   echo Installing npm dependencies...
   pushd converter_app
-  call npm install || ( popd ^& exit /b 1 )
+  set "ELECTRON_SKIP_BINARY_DOWNLOAD=1" && call npm install || ( popd ^& exit /b 1 )
   popd
 )
 
-REM Electron self-heal: postinstall sometimes fails to extract the prebuilt
-REM binary on Windows (newer Node + extract-zip flake, antivirus mid-write,
-REM or path-length limits). Detected by a missing electron.exe.
+REM Electron self-heal: npm postinstall (extract-zip) is unreliable on Windows
+REM (antivirus mid-write, path-length limits, Node 24+ incompatibility).
+REM Fix: bypass postinstall entirely and use PowerShell Expand-Archive, which
+REM is built into every Windows 10+ machine and always works.
 if not exist "converter_app\node_modules\electron\dist\electron.exe" (
-  echo Electron binary missing - attempting repair...
+  echo Electron binary missing - downloading directly from GitHub releases...
   pushd converter_app
-  if exist node_modules\electron\dist rmdir /s /q node_modules\electron\dist
-  if exist node_modules\electron\path.txt del /q node_modules\electron\path.txt
-  call npm install electron --no-save >nul 2>nul
+  %SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
+    "$pkg = Get-Content 'node_modules\electron\package.json' | ConvertFrom-Json;" ^
+    "$ver = $pkg.version;" ^
+    "$url = \"https://github.com/electron/electron/releases/download/v$ver/electron-v$ver-win32-x64.zip\";" ^
+    "$zip = \"$env:TEMP\electron-v$ver-win32-x64.zip\";" ^
+    "Write-Host \"  Fetching Electron v$ver...\";" ^
+    "Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing;" ^
+    "if (Test-Path 'node_modules\electron\dist') { Remove-Item 'node_modules\electron\dist' -Recurse -Force };" ^
+    "New-Item -ItemType Directory -Path 'node_modules\electron\dist' | Out-Null;" ^
+    "Expand-Archive -Path $zip -DestinationPath 'node_modules\electron\dist' -Force;" ^
+    "$pt = Join-Path (Get-Location) 'node_modules\electron\path.txt'; [System.IO.File]::WriteAllText($pt, 'electron.exe');" ^
+    "Write-Host '  Electron binary installed successfully.'"
   if not exist node_modules\electron\dist\electron.exe (
-    echo   npm postinstall didn't extract the binary; trying manual unzip from cache...
-    set "ZIP="
-    for /f "delims=" %%F in ('dir /b /o-d "%LOCALAPPDATA%\electron\Cache\electron-v*-win32-*.zip" 2^>nul') do (
-      if not defined ZIP set "ZIP=%LOCALAPPDATA%\electron\Cache\%%F"
-    )
-    if not defined ZIP (
-      echo   No cached Electron zip in %LOCALAPPDATA%\electron\Cache.
-      echo   Try: rmdir /s /q node_modules ^&^& npm install
-      popd
-      exit /b 1
-    )
-    if exist node_modules\electron\dist rmdir /s /q node_modules\electron\dist
-    mkdir node_modules\electron\dist
-    tar -xf "!ZIP!" -C node_modules\electron\dist
-    if not exist node_modules\electron\dist\electron.exe (
-      echo   Manual extract failed. Try: rmdir /s /q node_modules ^&^& npm install
-      popd
-      exit /b 1
-    )
-    ^> node_modules\electron\path.txt echo electron
-    echo   Repaired via manual unzip.
+    echo   Download or extraction failed. Check your internet connection and try again.
+    popd
+    exit /b 1
   )
   popd
 )
