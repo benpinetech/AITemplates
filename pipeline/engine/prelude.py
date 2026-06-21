@@ -32,9 +32,10 @@ CreateVar declarations to prepend.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
-from ..grammar.loaders import OrgRoot
+from ..grammar.loaders import AgencyRoot
 from ..grammar.role_index import RoleIndex, role_index_for
 from ..parser.pine_ast import PineAtName, PineChain, PineToken
 
@@ -118,7 +119,7 @@ def split_child_entity(name: str) -> Optional[Tuple[str, str, str]]:
 def parent_declaration(parent: str, idx: Optional[RoleIndex] = None) -> Optional[str]:
     """Return the CreateVar string that declares the parent Root entity.
 
-    Consults the role index first (org-config-driven) for the type
+    Consults the role index first (agency-config-driven) for the type
     code and source table; falls back to the hardcoded tables for
     back-compat. Returns ``None`` when the parent isn't classifiable.
     """
@@ -165,6 +166,73 @@ def child_declaration(child: str, parent: str, source_table: str) -> str:
         f'@[CreateVar(@{child}, '
         f'@{source_table}.GetByQuery("{fk}":@[{parent}.first.{fk}]))]'
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Parsing — the inverse of the declaration builders above
+# ─────────────────────────────────────────────────────────────────────────────
+# A mapper's corrected CreateVar carries the structured facts the agency
+# config needs (type code for a root, parent/source for a child). The
+# CreateVar syntax is regular, so targeted searches extract each fact
+# without a full balanced-bracket parse.
+
+
+@dataclass(frozen=True)
+class CreateVarFacts:
+    """Structured facts extracted from a single CreateVar declaration.
+
+    ``kind`` is ``"involvement"`` / ``"assignment"`` (root entities, with a
+    ``type_code``) or ``"child"`` (with a ``parent`` and ``suffix``).
+    """
+
+    var_name: str
+    kind: str
+    source_table: str
+    type_code: Optional[str] = None
+    parent: Optional[str] = None
+    suffix: Optional[str] = None
+
+
+_CV_VAR_RE = re.compile(r"CreateVar\(\s*@(\w+)")
+_CV_SRC_RE = re.compile(r",\s*@(\w+)\.GetByQuery")
+_CV_TYPE_RE = re.compile(r'"Type"\s*:\s*"([^"]*)"')
+_CV_FK_RE = re.compile(r'"(?:NameID|PersonnelID)"\s*:\s*@\[?(\w+)\.')
+
+
+def parse_createvar(pine_str: str) -> Optional[CreateVarFacts]:
+    """Parse a single ``@[CreateVar(...)]`` declaration into structured facts.
+
+    Returns ``None`` when the string isn't a recognisable CreateVar (so a
+    caller can map over a mixed token list and keep only the CreateVars).
+    Root entities are classified by their source table (CaseInvolvement vs
+    CaseAssignment); children by a ``Name*`` / ``Personnel*`` source, with
+    the parent read from the foreign-key reference.
+    """
+    if "CreateVar" not in pine_str:
+        return None
+    mvar = _CV_VAR_RE.search(pine_str)
+    msrc = _CV_SRC_RE.search(pine_str)
+    if not mvar or not msrc:
+        return None
+    var_name = mvar.group(1)
+    source = msrc.group(1)
+
+    if source == "CaseInvolvement":
+        mt = _CV_TYPE_RE.search(pine_str)
+        return CreateVarFacts(var_name, "involvement", source,
+                              type_code=mt.group(1) if mt else None)
+    if source == "CaseAssignment":
+        mt = _CV_TYPE_RE.search(pine_str)
+        return CreateVarFacts(var_name, "assignment", source,
+                              type_code=mt.group(1) if mt else None)
+
+    # Child entity: parent comes from the FK reference, suffix from the
+    # source-table name (NameAddress → Address, PersonnelPhone → Phone, …).
+    mfk = _CV_FK_RE.search(pine_str)
+    parent = mfk.group(1) if mfk else None
+    suffix = next((s for s in ("Address", "Phone", "Email")
+                   if source.endswith(s)), None)
+    return CreateVarFacts(var_name, "child", source, parent=parent, suffix=suffix)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -232,15 +300,15 @@ def referenced_entities(pine_outputs: Sequence[PineToken]) -> List[str]:
 
 def generate_prelude(
     pine_outputs: Sequence[PineToken],
-    org_overrides: Optional[OrgRoot] = None,
+    agency_overrides: Optional[AgencyRoot] = None,
 ) -> List[str]:
     """Generate the CreateVar prelude needed to make ``pine_outputs`` valid.
 
-    When ``org_overrides`` is supplied, the org config drives both the
+    When ``agency_overrides`` is supplied, the agency config drives both the
     classification (which Pine entities are children) AND the
-    pre-declared filter (entities the org's variable screen already
+    pre-declared filter (entities the agency's variable screen already
     declares are SKIPPED — no inline CreateVar needed). Without an
-    org override, falls back to the hardcoded classification tables
+    agency override, falls back to the hardcoded classification tables
     AND skips no entities (i.e. assumes nothing is pre-declared, which
     is the safe default for a fresh deployment).
 
@@ -248,18 +316,18 @@ def generate_prelude(
     ordered (parent before child) and deduplicated. Empty list if no
     child-entity references that need declaring are detected.
     """
-    idx = role_index_for(org_overrides)
+    idx = role_index_for(agency_overrides)
 
     declarations: Dict[str, str] = {}
     order: List[str] = []
 
     for entity in referenced_entities(pine_outputs):
-        # Pull child info from the org config first; fall back to
-        # the hardcoded suffix mapping if the org doesn't define it.
+        # Pull child info from the agency config first; fall back to
+        # the hardcoded suffix mapping if the agency doesn't define it.
         if idx.is_child(entity):
             parent = idx.parent_of(entity)
             source_tbl = idx.child_source.get(entity, "")
-            # Respect pre_declared: skip if the org's variable screen
+            # Respect pre_declared: skip if the agency's variable screen
             # already exposes this child.
             if entity in idx.pre_declared:
                 continue
@@ -272,7 +340,7 @@ def generate_prelude(
         if not parent or not source_tbl:
             continue
 
-        # Parent declaration — but only if the org doesn't already
+        # Parent declaration — but only if the agency doesn't already
         # have it pre-declared.
         if parent not in declarations and parent not in idx.pre_declared:
             pdecl = parent_declaration(parent, idx)

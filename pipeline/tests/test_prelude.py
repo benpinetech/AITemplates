@@ -198,13 +198,13 @@ class TestPrependPreludeToRtf:
 
 class TestPipelineIntegration:
     def test_prelude_added_for_fresh_deployment(self):
-        # A fresh deployment without an org config should emit the
+        # A fresh deployment without an agency config should emit the
         # prelude — child entities aren't pre-declared anywhere.
         from pipeline.engine import prelude as prelude_module
         from pipeline.parser import pine_parser
         toks = [pine_parser.parse("@[ComplainantAddress.first.City]")]
-        # org_overrides=None mimics a brand-new deployment.
-        lines = prelude_module.generate_prelude(toks, org_overrides=None)
+        # agency_overrides=None mimics a brand-new deployment.
+        lines = prelude_module.generate_prelude(toks, agency_overrides=None)
         assert len(lines) == 2
         assert "CreateVar(@Complainant," in lines[0]
         assert "CreateVar(@ComplainantAddress," in lines[1]
@@ -212,12 +212,12 @@ class TestPipelineIntegration:
     def test_prelude_disabled_via_flag(self):
         from pipeline import pipeline
         rtf = "Header\n%[Cust_Complainant_MailAddress.City]\nfooter"
-        result = pipeline.convert_template(rtf, org="oba", emit_prelude=False)
+        result = pipeline.convert_template(rtf, agency="oba", emit_prelude=False)
         assert "@[CreateVar(@Complainant," not in result.converted_rtf
 
     def test_no_prelude_when_only_root_entities(self):
         from pipeline import pipeline
         # Bare Respondent name doesn't need a prelude.
         rtf = "%[JW_Respondent.FullName]"
-        result = pipeline.convert_template(rtf, org="oba")
+        result = pipeline.convert_template(rtf, agency="oba")
         assert "@[CreateVar" not in result.converted_rtf

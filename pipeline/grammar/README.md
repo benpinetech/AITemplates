@@ -1,4 +1,4 @@
-# Phase 3 — grammar / data model / lint / org overrides
+# Phase 3 — grammar / data model / lint / agency overrides
 
 This directory replaces sections of the monolithic
 `Agent/ground_truth/pine_syntax_ground_truth.txt` (1820 lines, three
@@ -10,7 +10,7 @@ file stays in place as the narrative reference.
 | `pine_grammar.toml` | sections 1–12 (token format, presets, FormatName, SetCasing, control keywords, operators) | parser, validator, pattern engine |
 | `pine_data_model.toml` | sections 13–22 (data sources, query parameters, field references) | validator, pattern miner |
 | `lint_rules.toml` | section 35 (anti-patterns) | validator (Phase 4) |
-| `org_overrides/<org>.toml` | sections 31–34 (OBA-specific entities, conventions, vocabulary) | validator, pattern engine, future live-API stand-in |
+| `agency_overrides/<agency>.toml` | sections 31–34 (OBA-specific entities, conventions, vocabulary) | validator, pattern engine, future live-API stand-in |
 | `pine_idioms.md` | sections 26, 27, 29 (template patterns, edge cases) | human reference, few-shot pool for LLM fallback |
 
 ### Why split?
@@ -75,21 +75,21 @@ validator should reject. A rule has:
 The validator implementation lives in Phase 4. This Phase 3 deliverable
 just authors the rules.
 
-#### `org_overrides/<org>.toml`
+#### `agency_overrides/<agency>.toml`
 
-Per-org metadata and vocabulary. The OBA file is the only one
+Per-agency metadata and vocabulary. The OBA file is the only one
 authored today; criminal/PD will follow when needed.
 
 Each file has:
 
-- `[org]` — id, description, notes
-- `[org.vocabulary]` — list of valid Pine entity names for this org
-- `[org.conventions]` — preference defaults (e.g. SetCasing on address fields)
-- `[org.subdoc_path_family]` — path-prefix → numeric IDs (org-aware Subdocument)
+- `[agency]` — id, description, notes
+- `[agency.vocabulary]` — list of valid Pine entity names for this agency
+- `[agency.conventions]` — preference defaults (e.g. SetCasing on address fields)
+- `[agency.subdoc_path_family]` — path-prefix → numeric IDs (agency-aware Subdocument)
 
-Until the live org-variable API exists (deferred — see
+Until the live agency-variable API exists (deferred — see
 `../README.md` §4.2), the validator reads its allow-list from
-`org.vocabulary`.
+`agency.vocabulary`.
 
 #### `pine_idioms.md`
 
@@ -109,13 +109,13 @@ from v2.grammar.loaders import (
     load_pine_grammar,
     load_pine_data_model,
     load_lint_rules,
-    load_org_overrides,
+    load_agency_overrides,
 )
 
 grammar = load_pine_grammar()
 print(grammar.date_presets["preset1"].format)   # "MMMM d, yyyy"
 
-oba = load_org_overrides("oba")
+oba = load_agency_overrides("oba")
 print("Defense" in oba.vocabulary)               # True
 ```
 
@@ -141,5 +141,5 @@ Each loader returns a typed model with errors surfaced as a
   lint rules (e.g. "no SetCasing chained on a `*Number` path") are a
   future extension — add a new field to the schema and a new check
   in the validator when a regex form gets unwieldy.
-- Criminal/PD org overrides are not yet authored — wait until we
+- Criminal/PD agency overrides are not yet authored — wait until we
   start converting non-OBA templates.

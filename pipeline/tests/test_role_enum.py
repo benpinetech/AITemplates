@@ -56,7 +56,7 @@ class TestClassifyPineName:
         assert role_enum.classify_pine_name(pine_name) == "assignment"
 
     def test_unknown_returns_none(self):
-        assert role_enum.classify_pine_name("OBAAttorney") is None  # org rename
+        assert role_enum.classify_pine_name("OBAAttorney") is None  # agency rename
         assert role_enum.classify_pine_name("Mystery") is None
 
 
@@ -94,7 +94,7 @@ class TestPromptIntegration:
         vocab = OrgVocabulary(entities=[], builtins=[], prompt_variables=[])
         req = ConversionRequest(
             jda_token=jda_parser.parse("%[Anything.X]"),
-            org="oba",
+            agency="oba",
             vocabulary=vocab,
         )
         prompt = req.assemble_prompt()
@@ -109,7 +109,7 @@ class TestPromptIntegration:
         vocab = OrgVocabulary(entities=[], builtins=[], prompt_variables=[])
         req = BatchConversionRequest(
             jda_tokens=(jda_parser.parse("%[Anything.X]"),),
-            org="oba",
+            agency="oba",
             vocabulary=vocab,
         )
         prompt = req.assemble_batch_prompt()

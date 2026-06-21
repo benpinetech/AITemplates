@@ -1,6 +1,6 @@
 """End-to-end conversion pipeline.
 
-Public entry point: ``convert_template(rtf, org, ...) -> ConversionResult``.
+Public entry point: ``convert_template(rtf, agency, ...) -> ConversionResult``.
 
 The pipeline glues together every phase:
 
@@ -17,11 +17,11 @@ The pipeline glues together every phase:
 Each output segment carries provenance so the diff UI can show "this
 came from the LLM" / "this is still unmatched". The privacy boundary
 (no prose to the LLM) is preserved end-to-end: only bracketed
-expressions plus the org's vocabulary and grammar fragments ever cross
+expressions plus the agency's vocabulary and grammar fragments ever cross
 into the LLM call.
 
-Org context is required. Pass ``org="oba"`` for OBA conversions; pass
-``org="any"`` only for tests / org-agnostic pipelines.
+Org context is required. Pass ``agency="oba"`` for OBA conversions; pass
+``agency="any"`` only for tests / agency-agnostic pipelines.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ from .engine import prelude as prelude_module
 from .engine.audience import classify_document_audience
 from .engine.llm_converter import LlmConverter
 from .engine.validator import ValidationIssue, Validator
-from .grammar.loaders import OrgRoot, load_org_overrides
+from .grammar.loaders import AgencyRoot, load_agency_overrides
 from .parser import branch_swap, rtf_extractor
 from .parser.jda_ast import JdaToken
 from .parser.pine_ast import PineToken
@@ -111,12 +111,12 @@ class ConversionResult:
     converted_rtf: str
     segments: Tuple[ConversionSegment, ...]
     issues: Tuple[ValidationIssue, ...]   # all validation issues, stream-level + per-token
-    org: str
+    agency: str
     template_name: Optional[str] = None
     audience: Optional[str] = None
     normalized_rtf: str = ""
     hits: Tuple = ()
-    org_overrides: Optional[OrgRoot] = None
+    agency_overrides: Optional[AgencyRoot] = None
     emit_prelude: bool = True
     # The CreateVar prelude lines that were prepended to ``converted_rtf``.
     # The GUI needs this to know how many Pine chips at the start of the
@@ -143,7 +143,7 @@ class ConversionResult:
     def summary_line(self) -> str:
         prov = self.by_provenance
         return (
-            f"org={self.org!r}  "
+            f"agency={self.agency!r}  "
             f"saved={prov[PROV_SUGGESTION]}  "
             f"llm={prov[PROV_LLM]}  "
             f"unmatched={prov[PROV_UNMATCHED]}  "
@@ -243,10 +243,10 @@ def _hit_range_for_segment(
 
 def convert_template(
     rtf: str,
-    org: str,
+    agency: str,
     *,
     library: Optional[List[Pattern]] = None,
-    org_overrides: Optional[OrgRoot] = None,
+    agency_overrides: Optional[AgencyRoot] = None,
     validator: Optional[Validator] = None,
     converter: Optional[LlmConverter] = None,
     include_verified_suggestions: bool = True,
@@ -256,17 +256,17 @@ def convert_template(
 ) -> ConversionResult:
     """Convert a JDA RTF template to Pine.
 
-    ``org`` is required — Phase 5 enforces explicit declaration. Inferring
-    org from JDA entity prefixes is a future convenience layer.
+    ``agency`` is required — Phase 5 enforces explicit declaration. Inferring
+    agency from JDA entity prefixes is a future convenience layer.
 
-    All optional dependencies (library, org_overrides, validator,
+    All optional dependencies (library, agency_overrides, validator,
     converter) are loaded with sensible defaults if not provided.
     Pass an explicit instance to override:
 
       - ``library``: few-shot examples for the converter (Pattern objects)
-      - ``org_overrides``: from ``grammar.loaders.load_org_overrides(org)``
+      - ``agency_overrides``: from ``grammar.loaders.load_agency_overrides(agency)``
         (only loaded if the file exists; ``any`` bypasses)
-      - ``validator``: built from the lint rules and the org overrides
+      - ``validator``: built from the lint rules and the agency overrides
       - ``converter``: not run by default; pass an instance to enable.
         The pipeline sends all tokens to the converter.
 
@@ -276,17 +276,17 @@ def convert_template(
     # Resolve dependencies. Verified suggestions layer in after audience
     # classification so the loader can filter by the current document's scope.
     auto_load_suggestions = (
-        library is None and include_verified_suggestions and org != "any"
+        library is None and include_verified_suggestions and agency != "any"
     )
     if library is None:
         library = []
-    if org_overrides is None and org != "any":
+    if agency_overrides is None and agency != "any":
         try:
-            org_overrides = load_org_overrides(org)
+            agency_overrides = load_agency_overrides(agency)
         except FileNotFoundError:
-            org_overrides = None
+            agency_overrides = None
     if validator is None:
-        validator = Validator(org=org_overrides) if org_overrides else Validator(org=None)
+        validator = Validator(agency=agency_overrides) if agency_overrides else Validator(agency=None)
 
     # 0. Normalize RTF first. The extractor stitches fragmented
     # ``%}{...}\n[`` openers (Word emits them when bold/italic spans
@@ -320,7 +320,7 @@ def convert_template(
     #     documents) and the LLM fallback (so the prompt's audience
     #     hint agrees with the loader's decision).
     audience: Optional[str] = None
-    if org != "any":
+    if agency != "any":
         try:
             from .patterns.transforms import _JDA_TO_PINE_ENTITY
             audience = classify_document_audience(
@@ -333,8 +333,8 @@ def convert_template(
     #     document. ``global`` always applies; ``by_template`` and
     #     ``by_audience`` only when the inputs name them.
     if auto_load_suggestions:
-        library = library + suggestion_store.load_verified_for_org(
-            org,
+        library = library + suggestion_store.load_verified_for_agency(
+            agency,
             root=suggestions_root,
             template_name=template_name,
             audience=audience,
@@ -386,6 +386,11 @@ def convert_template(
                 llm_tokens, template_name=template_name,
                 contexts=tuple(llm_contexts),
                 return_drops=True,
+                # The few-shot pool is the document-scoped library, which
+                # carries this agency's verified suggestions (accepted human
+                # edits). This is what makes edits generalize to similar
+                # tokens, not just short-circuit identical ones.
+                few_shot_library=library,
             )
         except Exception:  # noqa: BLE001 — never let a converter error abort the pipeline
             batch_outputs = [[] for _ in llm_tokens]
@@ -460,7 +465,7 @@ def convert_template(
     final_prelude_lines: Tuple[str, ...] = ()
     if emit_prelude and pine_stream:
         prelude_lines = prelude_module.generate_prelude(
-            pine_stream, org_overrides=org_overrides,
+            pine_stream, agency_overrides=agency_overrides,
         )
         if prelude_lines:
             converted_rtf = prelude_module.prepend_prelude_to_rtf(
@@ -472,12 +477,12 @@ def convert_template(
         converted_rtf=converted_rtf,
         segments=final_segments,
         issues=tuple(all_issues),
-        org=org,
+        agency=agency,
         template_name=template_name,
         audience=audience,
         normalized_rtf=rtf,
         hits=tuple(hits),
-        org_overrides=org_overrides,
+        agency_overrides=agency_overrides,
         emit_prelude=emit_prelude,
         prelude_lines=final_prelude_lines,
     )
@@ -508,8 +513,8 @@ def rebuild_result_with_edits(
     """
     if validator is None:
         validator = (
-            Validator(org=result.org_overrides)
-            if result.org_overrides else Validator(org=None)
+            Validator(agency=result.agency_overrides)
+            if result.agency_overrides else Validator(agency=None)
         )
 
     # Apply edits → new segments, preserving everything else.
@@ -553,7 +558,7 @@ def rebuild_result_with_edits(
     final_prelude_lines: Tuple[str, ...] = ()
     if result.emit_prelude and pine_stream:
         prelude_lines = prelude_module.generate_prelude(
-            pine_stream, org_overrides=result.org_overrides,
+            pine_stream, agency_overrides=result.agency_overrides,
         )
         if prelude_lines:
             converted_rtf = prelude_module.prepend_prelude_to_rtf(
@@ -565,12 +570,12 @@ def rebuild_result_with_edits(
         converted_rtf=converted_rtf,
         segments=final_segments,
         issues=tuple(all_issues),
-        org=result.org,
+        agency=result.agency,
         template_name=result.template_name,
         audience=result.audience,
         normalized_rtf=result.normalized_rtf,
         hits=result.hits,
-        org_overrides=result.org_overrides,
+        agency_overrides=result.agency_overrides,
         emit_prelude=result.emit_prelude,
         prelude_lines=final_prelude_lines,
     )
@@ -605,7 +610,7 @@ def _bucket_issues_by_token(
 
 def convert_file(
     input_path: Path,
-    org: str,
+    agency: str,
     *,
     output_path: Optional[Path] = None,
     **kwargs,
@@ -616,7 +621,7 @@ def convert_file(
     p = Path(input_path)
     rtf = p.read_text(encoding="utf-8", errors="replace")
     kwargs.setdefault("template_name", p.name)
-    result = convert_template(rtf, org, **kwargs)
+    result = convert_template(rtf, agency, **kwargs)
     if output_path is not None:
         Path(output_path).write_text(result.converted_rtf, encoding="utf-8")
     return result

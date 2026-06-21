@@ -174,13 +174,13 @@ def load_library(root: Optional[Path] = None) -> LoadReport:
     return report
 
 
-def patterns_for_org(patterns: Iterable[Pattern], org: str) -> List[Pattern]:
-    """Filter a list to patterns applicable to ``org``.
+def patterns_for_agency(patterns: Iterable[Pattern], agency: str) -> List[Pattern]:
+    """Filter a list to patterns applicable to ``agency``.
 
-    Patterns with ``org_context = "any"`` always apply; org-specific
+    Patterns with ``agency_context = "any"`` always apply; agency-specific
     patterns apply only when their context matches. Higher-priority
     patterns come first.
     """
-    out = [p for p in patterns if p.org_context in ("any", org)]
+    out = [p for p in patterns if p.agency_context in ("any", agency)]
     out.sort(key=lambda p: (-p.priority, p.id))
     return out

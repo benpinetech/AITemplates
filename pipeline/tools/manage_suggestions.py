@@ -1,15 +1,15 @@
 """CLI for the converter app's "Saved Mappings" panel.
 
 Modes:
-  --mode list   --org <org>
-      Print a JSON array of every suggestion on disk for the org.
+  --mode list   --agency <agency>
+      Print a JSON array of every suggestion on disk for the agency.
 
   --mode delete --file <abs-path>
       Delete a single suggestion file. Returns {ok: true}.
 
   --mode update --file <old-abs-path> --payload <json>
       Replace a suggestion's Pine side. Payload schema:
-        { org, scope: {kind, value}, jda_tokens, pine_tokens }
+        { agency, scope: {kind, value}, jda_tokens, pine_tokens }
       Prunes the old file, writes the new one, returns {ok, path}.
 
 All output is a single JSON line to stdout; exit 0 on success, 1 on error.
@@ -27,22 +27,22 @@ from typing import Any
 from ..engine import suggestion_store
 
 
-def _list_all(org: str) -> list[dict[str, Any]]:
+def _list_all(agency: str) -> list[dict[str, Any]]:
     root = suggestion_store._resolve_root(None)
-    org_safe = suggestion_store._safe_org(org)
-    org_dir = Path(root) / suggestion_store.VERIFIED_DIRNAME / org_safe
-    if not org_dir.exists():
+    agency_safe = suggestion_store._safe_agency(agency)
+    agency_dir = Path(root) / suggestion_store.VERIFIED_DIRNAME / agency_safe
+    if not agency_dir.exists():
         return []
 
     subdirs: list[tuple[Path, str, str]] = []
-    if (org_dir / "global").exists():
-        subdirs.append((org_dir / "global", "global", ""))
-    by_tmpl = org_dir / "by_template"
+    if (agency_dir / "global").exists():
+        subdirs.append((agency_dir / "global", "global", ""))
+    by_tmpl = agency_dir / "by_template"
     if by_tmpl.exists():
         for d in sorted(by_tmpl.iterdir()):
             if d.is_dir():
                 subdirs.append((d, "template", d.name))
-    by_aud = org_dir / "by_audience"
+    by_aud = agency_dir / "by_audience"
     if by_aud.exists():
         for d in sorted(by_aud.iterdir()):
             if d.is_dir():
@@ -66,7 +66,7 @@ def _list_all(org: str) -> list[dict[str, Any]]:
                     "file": str(toml_file),
                     "scope_kind": scope_kind,
                     "scope_value": scope_value,
-                    "org": org_safe,
+                    "agency": agency_safe,
                     "jda_tokens": jda_tokens,
                     "pine_tokens": pine_tokens,
                 })
@@ -88,7 +88,7 @@ def _delete(file: str) -> dict[str, Any]:
 
 def _update(file: str, payload: dict[str, Any]) -> dict[str, Any]:
     try:
-        org = payload["org"]
+        agency = payload["agency"]
         scope_raw = payload.get("scope", {})
         jda_tokens = payload["jda_tokens"]
         pine_tokens = payload["pine_tokens"]
@@ -99,7 +99,7 @@ def _update(file: str, payload: dict[str, Any]) -> dict[str, Any]:
 
     try:
         suggestion_store.prune_conflicting_in_scope(
-            jda_tokens, pine_tokens, org, scope=scope,
+            jda_tokens, pine_tokens, agency, scope=scope,
         )
         # Also delete the old file directly in case prune didn't catch it
         # (e.g., the user changed only whitespace in the display).
@@ -108,7 +108,7 @@ def _update(file: str, payload: dict[str, Any]) -> dict[str, Any]:
             old.unlink(missing_ok=True)
 
         new_path = suggestion_store.accept_suggestion(
-            jda_tokens, pine_tokens, org, scope=scope,
+            jda_tokens, pine_tokens, agency, scope=scope,
         )
         return {"ok": True, "path": str(new_path)}
     except ValueError as e:
@@ -120,13 +120,19 @@ def _update(file: str, payload: dict[str, Any]) -> dict[str, Any]:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", required=True, choices=["list", "delete", "update"])
-    parser.add_argument("--org", default="oba")
+    # Only ``list`` needs an agency (to scope the scan). ``delete``/``update``
+    # act on an absolute file path and carry the agency inside ``--payload``,
+    # so requiring it here would make those modes fail before they run.
+    parser.add_argument("--agency", default="")
     parser.add_argument("--file", default="")
     parser.add_argument("--payload", default="{}")
     args = parser.parse_args(argv)
 
     if args.mode == "list":
-        result = _list_all(args.org)
+        if not args.agency:
+            print(json.dumps({"error": "--agency required for list"}))
+            return 1
+        result = _list_all(args.agency)
         print(json.dumps(result))
         return 0
 

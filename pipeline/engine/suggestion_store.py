@@ -10,7 +10,7 @@ Pine token text.
 Suggestions live under a scope to limit when they re-apply. Scope is
 encoded in the directory layout, not in the pattern schema:
 
-    suggestions/verified/<org>/
+    suggestions/verified/<agency>/
         global/                  ← re-applies on every template (the
                                    "exact-match cache" hazard documented
                                    in PROJECT_STATUS.md; default OFF)
@@ -37,11 +37,11 @@ old auto-accept semantics for callers that pass ``scope=("global",
 
 ### Public API
 
-    accept_suggestion(jda, pine, org, *, scope=..., source_template=...)
-    reject_suggestion(jda, pine, org, *, reason=..., source_template=...)
-    load_verified_for_org(org, *, template_name=..., audience=...)
-    is_suggestion_accepted(jda, pine, org, *, scope=...)
-    list_scoped_suggestions(org, *, template_name=..., audience=...)
+    accept_suggestion(jda, pine, agency, *, scope=..., source_template=...)
+    reject_suggestion(jda, pine, agency, *, reason=..., source_template=...)
+    load_verified_for_agency(agency, *, template_name=..., audience=...)
+    is_suggestion_accepted(jda, pine, agency, *, scope=...)
+    list_scoped_suggestions(agency, *, template_name=..., audience=...)
 """
 
 from __future__ import annotations
@@ -65,10 +65,11 @@ TokenInput = Union[str, Sequence[str]]
 
 
 # Default on-disk locations. Tests pass an explicit ``root`` to keep
-# the real directory clean. The ``JDAPINE_SUGGESTIONS_ROOT`` env var
-# lets callers (notably the Electron host and end-to-end tests) point
-# all reads + writes at a per-process or per-test temp directory
-# without having to thread an explicit ``root=`` through every layer.
+# the real directory clean. The ``JDA_SUGGESTIONS_DIR`` env var (read by
+# ``_resource_path.suggestions_dir`` at import) lets callers — notably the
+# packaged Electron host and end-to-end tests — point all reads + writes at
+# a per-process or per-test temp directory without threading an explicit
+# ``root=`` through every layer.
 from pipeline._resource_path import suggestions_dir as _suggestions_dir
 
 SUGGESTIONS_DIR = _suggestions_dir()
@@ -115,12 +116,48 @@ def normalize_scope(scope: Optional[Scope]) -> Scope:
     return (kind, value)
 
 
-def _safe_org(org: str) -> str:
+def _safe_agency(agency: str) -> str:
     """Reject paths / weird characters before they reach the
     filesystem. Org slugs are lowercase letters/digits/hyphens only."""
-    if not re.fullmatch(r"[a-z0-9_\-]+", org or ""):
-        raise ValueError(f"invalid org slug for filesystem: {org!r}")
-    return org
+    if not re.fullmatch(r"[a-z0-9_\-]+", agency or ""):
+        raise ValueError(f"invalid agency slug for filesystem: {agency!r}")
+    return agency
+
+
+def agency_verified_dir(agency: str, root: Optional[Path] = None) -> Path:
+    """Absolute path to an agency's verified-suggestion tree."""
+    return _resolve_root(root) / VERIFIED_DIRNAME / _safe_agency(agency)
+
+
+def delete_agency_suggestions(agency: str, root: Optional[Path] = None) -> bool:
+    """Remove an agency's entire verified-suggestion tree. Returns True if
+    a directory was actually removed (False if there was nothing there)."""
+    import shutil
+    d = agency_verified_dir(agency, root)
+    if d.exists():
+        shutil.rmtree(d)
+        return True
+    return False
+
+
+def move_agency_suggestions(
+    old: str, new: str, root: Optional[Path] = None
+) -> bool:
+    """Move an agency's verified-suggestion tree to a new agency id (used by
+    rename). Returns True if a move happened. No-op if ``old == new`` or the
+    source is absent; raises ``FileExistsError`` if the destination exists."""
+    import shutil
+    if old == new:
+        return False
+    src = agency_verified_dir(old, root)
+    if not src.exists():
+        return False
+    dst = agency_verified_dir(new, root)
+    if dst.exists():
+        raise FileExistsError(f"suggestions already exist for agency {new!r}")
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(src), str(dst))
+    return True
 
 
 # Scope-value slugs allow uppercase + dot/space (template filenames look
@@ -215,7 +252,7 @@ def _toml_match_rewrite(values: Sequence[str]) -> str:
 
 def _suggestion_toml(
     jda_tokens: Sequence[str], pine_tokens: Sequence[str],
-    sug_id: str, org: str, scope: Scope,
+    sug_id: str, agency: str, scope: Scope,
     *,
     source_template: Optional[str] = None,
     source_segment_index: Optional[int] = None,
@@ -232,7 +269,7 @@ def _suggestion_toml(
     """
     when = datetime.datetime.now().isoformat(timespec="seconds")
     kind, value = scope
-    notes_bits = [f"accepted {when}", f"org={org}", f"scope={kind}"]
+    notes_bits = [f"accepted {when}", f"agency={agency}", f"scope={kind}"]
     if value:
         notes_bits.append(f"scope_value={value}")
     if source_template:
@@ -261,7 +298,7 @@ def _suggestion_toml(
         "provenance  = \"llm-generated\"\n"
         "verification = \"verified\"\n"
         f"notes       = {_toml_quote(notes)}\n"
-        f"org_context = {_toml_quote(org)}\n"
+        f"agency_context = {_toml_quote(agency)}\n"
         f"priority    = {priority}\n"
         "\n"
         f"match   = {_toml_match_rewrite(list(jda_tokens))}\n"
@@ -275,7 +312,7 @@ def _suggestion_toml(
 
 
 def _active_scope_dirs(
-    org_dir: Path,
+    agency_dir: Path,
     template_name: Optional[str],
     audience: Optional[str],
 ) -> List[Path]:
@@ -283,19 +320,19 @@ def _active_scope_dirs(
     the current document. Always includes ``global`` if it exists; adds
     the matching template / audience subdirs when the inputs name them."""
     dirs: List[Path] = []
-    global_dir = org_dir / "global"
+    global_dir = agency_dir / "global"
     if global_dir.exists():
         dirs.append(global_dir)
     if template_name:
         try:
-            t_dir = org_dir / "by_template" / _safe_scope_value(template_name)
+            t_dir = agency_dir / "by_template" / _safe_scope_value(template_name)
         except ValueError:
             t_dir = None
         if t_dir and t_dir.exists():
             dirs.append(t_dir)
     if audience:
         try:
-            a_dir = org_dir / "by_audience" / _safe_scope_value(audience)
+            a_dir = agency_dir / "by_audience" / _safe_scope_value(audience)
         except ValueError:
             a_dir = None
         if a_dir and a_dir.exists():
@@ -303,8 +340,8 @@ def _active_scope_dirs(
     return dirs
 
 
-def load_verified_for_org(
-    org: str,
+def load_verified_for_agency(
+    agency: str,
     *,
     root: Optional[Path] = None,
     template_name: Optional[str] = None,
@@ -317,7 +354,7 @@ def load_verified_for_org(
     subdirectories load. ``global`` always loads when it exists.
 
     ``include_legacy_flat``: if True, also picks up suggestions written
-    by older versions that lived directly under ``verified/<org>/`` (no
+    by older versions that lived directly under ``verified/<agency>/`` (no
     scope subdir). They're treated as global-priority entries.
 
     Patterns with unparseable rewrites are dropped (with a stderr
@@ -329,15 +366,15 @@ def load_verified_for_org(
     import sys
 
     root = _resolve_root(root)
-    org_dir = Path(root) / VERIFIED_DIRNAME / _safe_org(org)
-    if not org_dir.exists():
+    agency_dir = Path(root) / VERIFIED_DIRNAME / _safe_agency(agency)
+    if not agency_dir.exists():
         return []
 
-    dirs = _active_scope_dirs(org_dir, template_name, audience)
+    dirs = _active_scope_dirs(agency_dir, template_name, audience)
     if include_legacy_flat:
-        # Legacy layout: TOML files directly in the org dir. Pre-scope
+        # Legacy layout: TOML files directly in the agency dir. Pre-scope
         # versions of this module wrote them there. Treat as global.
-        legacy_dir = org_dir
+        legacy_dir = agency_dir
         legacy_files = [
             f for f in legacy_dir.glob("*.toml") if f.is_file()
         ]
@@ -407,7 +444,7 @@ def load_verified_for_org(
 def accept_suggestion(
     jda_text: TokenInput,
     pine_text: TokenInput,
-    org: str,
+    agency: str,
     *,
     scope: Optional[Scope] = None,
     source_template: Optional[str] = None,
@@ -459,15 +496,15 @@ def accept_suggestion(
 
     scope = normalize_scope(scope)
     root = _resolve_root(root)
-    org_safe = _safe_org(org)
+    agency_safe = _safe_agency(agency)
     sug_id = _suggestion_id(jda_list, pine_list, scope)
-    org_dir = Path(root) / VERIFIED_DIRNAME / org_safe
-    target_dir = org_dir / _scope_subdir(scope)
+    agency_dir = Path(root) / VERIFIED_DIRNAME / agency_safe
+    target_dir = agency_dir / _scope_subdir(scope)
     target_dir.mkdir(parents=True, exist_ok=True)
     path = target_dir / f"{sug_id}.toml"
     path.write_text(
         _suggestion_toml(
-            jda_list, pine_list, sug_id, org_safe, scope,
+            jda_list, pine_list, sug_id, agency_safe, scope,
             source_template=source_template,
             source_segment_index=source_segment_index,
             note=note,
@@ -480,7 +517,7 @@ def accept_suggestion(
 def prune_conflicting_in_scope(
     jda_text: TokenInput,
     pine_text: TokenInput,
-    org: str,
+    agency: str,
     *,
     scope: Optional[Scope] = None,
     root: Optional[Path] = None,
@@ -491,7 +528,7 @@ def prune_conflicting_in_scope(
     Auto-persisted inline edits need this: if a converter edits a chip,
     changes their mind, and edits it again, accumulating both files
     would leave two patterns competing at the same priority. Calling
-    this before ``accept_suggestion`` enforces "one rewrite per (org,
+    this before ``accept_suggestion`` enforces "one rewrite per (agency,
     scope, jda)".
 
     Returns the paths that were removed (empty list when nothing
@@ -500,9 +537,9 @@ def prune_conflicting_in_scope(
     """
     root = _resolve_root(root)
     scope = normalize_scope(scope)
-    org_safe = _safe_org(org)
-    org_dir = Path(root) / VERIFIED_DIRNAME / org_safe
-    scope_dir = org_dir / _scope_subdir(scope)
+    agency_safe = _safe_agency(agency)
+    agency_dir = Path(root) / VERIFIED_DIRNAME / agency_safe
+    scope_dir = agency_dir / _scope_subdir(scope)
     if not scope_dir.exists():
         return []
 
@@ -539,7 +576,7 @@ def prune_conflicting_in_scope(
 def reject_suggestion(
     jda_text: str,
     pine_text: str,
-    org: str,
+    agency: str,
     *,
     reason: str = "",
     source_template: Optional[str] = None,
@@ -553,7 +590,7 @@ def reject_suggestion(
     log_path.parent.mkdir(parents=True, exist_ok=True)
     record = {
         "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
-        "org": org,
+        "agency": agency,
         "jda": jda_text,
         "pine": pine_text,
         "reason": reason,
@@ -567,7 +604,7 @@ def reject_suggestion(
 def is_suggestion_accepted(
     jda_text: TokenInput,
     pine_text: TokenInput,
-    org: str,
+    agency: str,
     *,
     scope: Optional[Scope] = None,
     root: Optional[Path] = None,
@@ -577,14 +614,14 @@ def is_suggestion_accepted(
     shapes as ``accept_suggestion``."""
     root = _resolve_root(root)
     scope = normalize_scope(scope)
-    org_safe = _safe_org(org)
+    agency_safe = _safe_agency(agency)
     sug_id = _suggestion_id(
         _coerce_token_list(jda_text),
         _coerce_token_list(pine_text),
         scope,
     )
-    org_dir = Path(root) / VERIFIED_DIRNAME / org_safe
-    target = org_dir / _scope_subdir(scope) / f"{sug_id}.toml"
+    agency_dir = Path(root) / VERIFIED_DIRNAME / agency_safe
+    target = agency_dir / _scope_subdir(scope) / f"{sug_id}.toml"
     return target.exists()
 
 
@@ -599,39 +636,39 @@ class ScopedSuggestion:
     its scope metadata."""
 
     path: Path
-    org: str
+    agency: str
     scope: Scope
     pattern: Pattern
 
 
 def list_scoped_suggestions(
-    org: str,
+    agency: str,
     *,
     root: Optional[Path] = None,
     template_name: Optional[str] = None,
     audience: Optional[str] = None,
 ) -> List[ScopedSuggestion]:
-    """Return one ScopedSuggestion per on-disk file for the org. Filters
-    by template_name / audience the same way ``load_verified_for_org``
+    """Return one ScopedSuggestion per on-disk file for the agency. Filters
+    by template_name / audience the same way ``load_verified_for_agency``
     does. Useful for a future "manage overrides" GUI."""
     root = _resolve_root(root)
-    org_safe = _safe_org(org)
-    org_dir = Path(root) / VERIFIED_DIRNAME / org_safe
-    if not org_dir.exists():
+    agency_safe = _safe_agency(agency)
+    agency_dir = Path(root) / VERIFIED_DIRNAME / agency_safe
+    if not agency_dir.exists():
         return []
     dirs_with_scope: List[Tuple[Path, Scope]] = []
-    if (org_dir / "global").exists():
-        dirs_with_scope.append((org_dir / "global", (SCOPE_GLOBAL, "")))
+    if (agency_dir / "global").exists():
+        dirs_with_scope.append((agency_dir / "global", (SCOPE_GLOBAL, "")))
     if template_name:
         try:
-            d = org_dir / "by_template" / _safe_scope_value(template_name)
+            d = agency_dir / "by_template" / _safe_scope_value(template_name)
         except ValueError:
             d = None
         if d and d.exists():
             dirs_with_scope.append((d, (SCOPE_TEMPLATE, template_name)))
     if audience:
         try:
-            d = org_dir / "by_audience" / _safe_scope_value(audience)
+            d = agency_dir / "by_audience" / _safe_scope_value(audience)
         except ValueError:
             d = None
         if d and d.exists():
@@ -642,6 +679,6 @@ def list_scoped_suggestions(
         for p in report.patterns:
             out.append(ScopedSuggestion(
                 path=d / f"{p.id}.toml",
-                org=org_safe, scope=scope, pattern=p,
+                agency=agency_safe, scope=scope, pattern=p,
             ))
     return out

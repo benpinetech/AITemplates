@@ -249,9 +249,10 @@ ipcMain.handle("openRtf", async () => {
 });
 
 ipcMain.handle("convertRtf", async (_evt, args = {}) => {
-  const { path: rtfPath, org = "oba" } = args;
+  const { path: rtfPath, agency } = args;
   if (!rtfPath) throw new Error("convertRtf: missing 'path'");
-  return runPipeline(rtfPath, org);
+  if (!agency) throw new Error("convertRtf: missing 'agency'");
+  return runPipeline(rtfPath, agency);
 });
 
 ipcMain.handle("getSettings", async () => {
@@ -259,6 +260,7 @@ ipcMain.handle("getSettings", async () => {
   return {
     api_key: s.api_key || "",
     model: s.model || "",
+    agency: s.agency || "",
   };
 });
 
@@ -268,6 +270,7 @@ ipcMain.handle("setSettings", async (_evt, next = {}) => {
     ...current,
     api_key: typeof next.api_key === "string" ? next.api_key : current.api_key || "",
     model: typeof next.model === "string" ? next.model : current.model || "",
+    agency: typeof next.agency === "string" ? next.agency : current.agency || "",
   };
   writeSettings(merged);
   return { ok: true };
@@ -368,14 +371,14 @@ ipcMain.handle("persistEdit", async (_evt, args = {}) => {
  * we run the bundled PyInstaller sidecar binary (no Python required
  * on the user's machine).
  */
-function runPipeline(rtfPath, org) {
+function runPipeline(rtfPath, agency) {
   const usePackagedSidecar = app.isPackaged;
   const cmd = usePackagedSidecar
     ? SIDECAR_PATH
     : VENV_PYTHON;
   const args = usePackagedSidecar
-    ? ["convert", rtfPath, "--org", org, "--json"]
-    : ["-m", "pipeline.tools.convert", rtfPath, "--org", org, "--json", "--quiet"];
+    ? ["convert", rtfPath, "--agency", agency, "--json"]
+    : ["-m", "pipeline.tools.convert", rtfPath, "--agency", agency, "--json", "--quiet"];
 
   return new Promise((resolve, reject) => {
     if (!usePackagedSidecar && !fs.existsSync(VENV_PYTHON)) {
@@ -444,7 +447,17 @@ function runPersistEdit(payload) {
       return;
     }
     const cwd = usePackagedSidecar ? path.dirname(cmd) : REPO_ROOT;
-    const child = spawn(cmd, args, { cwd, env: pipelineEnv() });
+    // ``spawn`` can throw synchronously (e.g. ENOENT) before any
+    // 'error'/'close' event. These helpers are documented "always
+    // resolves", so catch it and resolve an error shape rather than
+    // rejecting — a rejected IPC can leave the renderer wedged.
+    let child;
+    try {
+      child = spawn(cmd, args, { cwd, env: pipelineEnv() });
+    } catch (e) {
+      resolve({ error: `spawn failed: ${e.message}` });
+      return;
+    }
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (d) => { stdout += d.toString("utf-8"); });
@@ -481,7 +494,17 @@ function runManageSuggestions(cliArgs) {
       return;
     }
     const cwd = usePackagedSidecar ? path.dirname(cmd) : REPO_ROOT;
-    const child = spawn(cmd, args, { cwd, env: pipelineEnv() });
+    // ``spawn`` can throw synchronously (e.g. ENOENT) before any
+    // 'error'/'close' event. These helpers are documented "always
+    // resolves", so catch it and resolve an error shape rather than
+    // rejecting — a rejected IPC can leave the renderer wedged.
+    let child;
+    try {
+      child = spawn(cmd, args, { cwd, env: pipelineEnv() });
+    } catch (e) {
+      resolve({ error: `spawn failed: ${e.message}` });
+      return;
+    }
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (d) => { stdout += d.toString("utf-8"); });
@@ -501,26 +524,216 @@ function runManageSuggestions(cliArgs) {
 }
 
 /**
- * Spawn update_prelude.py with the RTF as stdin. Sends current Pine
- * token strings so the tool can strip the old CreateVar prelude and
- * regenerate from the live chip state. Always resolves; shape is
- * { ok: true, rtf: string } or { error: string }.
+ * Spawn list_agencies.py. Always resolves; shape is the JSON array the
+ * CLI prints (``[{ id, description }]``) or ``{ error }`` on failure.
  */
-function runUpdatePrelude(rtf, pineTokens, org = "oba", preludeCount = 0) {
+function runListAgencies() {
   const usePackagedSidecar = app.isPackaged;
-  const cmd = usePackagedSidecar
-    ? SIDECAR_PATH
-    : VENV_PYTHON;
+  const cmd = usePackagedSidecar ? SIDECAR_PATH : VENV_PYTHON;
   const args = usePackagedSidecar
-    ? ["update_prelude", "--tokens", JSON.stringify(pineTokens), "--org", org, "--prelude-count", String(preludeCount)]
-    : ["-m", "pipeline.tools.update_prelude", "--tokens", JSON.stringify(pineTokens), "--org", org, "--prelude-count", String(preludeCount)];
+    ? ["list_agencies"]
+    : ["-m", "pipeline.tools.list_agencies"];
   return new Promise((resolve) => {
     if (!usePackagedSidecar && !fs.existsSync(VENV_PYTHON)) {
       resolve({ error: `Dev mode needs the project venv at ${VENV_PYTHON}` });
       return;
     }
     const cwd = usePackagedSidecar ? path.dirname(cmd) : REPO_ROOT;
-    const child = spawn(cmd, args, { cwd, env: pipelineEnv() });
+    // ``spawn`` can throw synchronously (e.g. ENOENT) before any
+    // 'error'/'close' event. These helpers are documented "always
+    // resolves", so catch it and resolve an error shape rather than
+    // rejecting — a rejected IPC can leave the renderer wedged.
+    let child;
+    try {
+      child = spawn(cmd, args, { cwd, env: pipelineEnv() });
+    } catch (e) {
+      resolve({ error: `spawn failed: ${e.message}` });
+      return;
+    }
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => { stdout += d.toString("utf-8"); });
+    child.stderr.on("data", (d) => { stderr += d.toString("utf-8"); });
+    child.on("error", (e) => resolve({ error: `spawn failed: ${e.message}` }));
+    child.on("close", () => {
+      try {
+        resolve(JSON.parse(stdout.trim() || "[]"));
+      } catch {
+        resolve({
+          error: `list_agencies emitted non-JSON: ${stdout.slice(0, 200)}` +
+                 (stderr ? `\nstderr: ${stderr.trim()}` : ""),
+        });
+      }
+    });
+  });
+}
+
+/**
+ * Spawn create_agency.py for the "Add agency" flow. Always resolves;
+ * shape is ``{ id, description }`` on success or ``{ error, code? }`` on
+ * failure (``code`` is ``"exists"`` or ``"invalid"``).
+ */
+function runCreateAgency(name) {
+  const usePackagedSidecar = app.isPackaged;
+  const cmd = usePackagedSidecar ? SIDECAR_PATH : VENV_PYTHON;
+  const args = usePackagedSidecar
+    ? ["create_agency", "--name", name]
+    : ["-m", "pipeline.tools.create_agency", "--name", name];
+  return new Promise((resolve) => {
+    if (!usePackagedSidecar && !fs.existsSync(VENV_PYTHON)) {
+      resolve({ error: `Dev mode needs the project venv at ${VENV_PYTHON}` });
+      return;
+    }
+    const cwd = usePackagedSidecar ? path.dirname(cmd) : REPO_ROOT;
+    // ``spawn`` can throw synchronously (e.g. ENOENT on some platforms)
+    // before any 'error'/'close' event fires. Without this guard the
+    // Promise rejects, the IPC invoke rejects, and the renderer's
+    // "Add agency" form is left wedged in its disabled "saving" state.
+    let child;
+    try {
+      child = spawn(cmd, args, { cwd, env: pipelineEnv() });
+    } catch (e) {
+      resolve({ error: `spawn failed: ${e.message}` });
+      return;
+    }
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => { stdout += d.toString("utf-8"); });
+    child.stderr.on("data", (d) => { stderr += d.toString("utf-8"); });
+    child.on("error", (e) => resolve({ error: `spawn failed: ${e.message}` }));
+    child.on("close", () => {
+      try {
+        resolve(JSON.parse(stdout.trim() || "{}"));
+      } catch {
+        resolve({
+          error: `create_agency emitted non-JSON: ${stdout.slice(0, 200)}` +
+                 (stderr ? `\nstderr: ${stderr.trim()}` : ""),
+        });
+      }
+    });
+  });
+}
+
+/**
+ * Spawn an agency-management tool (delete_agency / rename_agency) for the
+ * "Manage agencies" dialog. Always resolves; shape is the tool's JSON object
+ * on success or ``{ error, code? }`` on failure.
+ */
+function runAgencyTool(tool, toolArgs) {
+  const usePackagedSidecar = app.isPackaged;
+  const cmd = usePackagedSidecar ? SIDECAR_PATH : VENV_PYTHON;
+  const args = usePackagedSidecar
+    ? [tool, ...toolArgs]
+    : ["-m", `pipeline.tools.${tool}`, ...toolArgs];
+  return new Promise((resolve) => {
+    if (!usePackagedSidecar && !fs.existsSync(VENV_PYTHON)) {
+      resolve({ error: `Dev mode needs the project venv at ${VENV_PYTHON}` });
+      return;
+    }
+    const cwd = usePackagedSidecar ? path.dirname(cmd) : REPO_ROOT;
+    let child;
+    try {
+      child = spawn(cmd, args, { cwd, env: pipelineEnv() });
+    } catch (e) {
+      resolve({ error: `spawn failed: ${e.message}` });
+      return;
+    }
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => { stdout += d.toString("utf-8"); });
+    child.stderr.on("data", (d) => { stderr += d.toString("utf-8"); });
+    child.on("error", (e) => resolve({ error: `spawn failed: ${e.message}` }));
+    child.on("close", () => {
+      try {
+        resolve(JSON.parse(stdout.trim() || "{}"));
+      } catch {
+        resolve({
+          error: `${tool} emitted non-JSON: ${stdout.slice(0, 200)}` +
+                 (stderr ? `\nstderr: ${stderr.trim()}` : ""),
+        });
+      }
+    });
+  });
+}
+
+/**
+ * Spawn learn_createvars.py — teaches the agency's role config from a
+ * mapper's corrected CreateVar declarations. Always resolves; shape is
+ * ``{ learned, entities }`` on success or ``{ error }`` on failure.
+ */
+function runLearnCreateVars(agency, tokens) {
+  const usePackagedSidecar = app.isPackaged;
+  const cmd = usePackagedSidecar ? SIDECAR_PATH : VENV_PYTHON;
+  const tokensJson = JSON.stringify(tokens);
+  const args = usePackagedSidecar
+    ? ["learn_createvars", "--agency", agency, "--tokens", tokensJson]
+    : ["-m", "pipeline.tools.learn_createvars", "--agency", agency, "--tokens", tokensJson];
+  return new Promise((resolve) => {
+    if (!usePackagedSidecar && !fs.existsSync(VENV_PYTHON)) {
+      resolve({ error: `Dev mode needs the project venv at ${VENV_PYTHON}` });
+      return;
+    }
+    const cwd = usePackagedSidecar ? path.dirname(cmd) : REPO_ROOT;
+    // ``spawn`` can throw synchronously (e.g. ENOENT) before any
+    // 'error'/'close' event. These helpers are documented "always
+    // resolves", so catch it and resolve an error shape rather than
+    // rejecting — a rejected IPC can leave the renderer wedged.
+    let child;
+    try {
+      child = spawn(cmd, args, { cwd, env: pipelineEnv() });
+    } catch (e) {
+      resolve({ error: `spawn failed: ${e.message}` });
+      return;
+    }
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => { stdout += d.toString("utf-8"); });
+    child.stderr.on("data", (d) => { stderr += d.toString("utf-8"); });
+    child.on("error", (e) => resolve({ error: `spawn failed: ${e.message}` }));
+    child.on("close", () => {
+      try {
+        resolve(JSON.parse(stdout.trim() || "{}"));
+      } catch {
+        resolve({
+          error: `learn_createvars emitted non-JSON: ${stdout.slice(0, 200)}` +
+                 (stderr ? `\nstderr: ${stderr.trim()}` : ""),
+        });
+      }
+    });
+  });
+}
+
+/**
+ * Spawn update_prelude.py with the RTF as stdin. Sends current Pine
+ * token strings so the tool can strip the old CreateVar prelude and
+ * regenerate from the live chip state. Always resolves; shape is
+ * { ok: true, rtf: string } or { error: string }.
+ */
+function runUpdatePrelude(rtf, pineTokens, agency, preludeCount = 0) {
+  const usePackagedSidecar = app.isPackaged;
+  const cmd = usePackagedSidecar
+    ? SIDECAR_PATH
+    : VENV_PYTHON;
+  const args = usePackagedSidecar
+    ? ["update_prelude", "--tokens", JSON.stringify(pineTokens), "--agency", agency, "--prelude-count", String(preludeCount)]
+    : ["-m", "pipeline.tools.update_prelude", "--tokens", JSON.stringify(pineTokens), "--agency", agency, "--prelude-count", String(preludeCount)];
+  return new Promise((resolve) => {
+    if (!usePackagedSidecar && !fs.existsSync(VENV_PYTHON)) {
+      resolve({ error: `Dev mode needs the project venv at ${VENV_PYTHON}` });
+      return;
+    }
+    const cwd = usePackagedSidecar ? path.dirname(cmd) : REPO_ROOT;
+    // ``spawn`` can throw synchronously (e.g. ENOENT) before any
+    // 'error'/'close' event. These helpers are documented "always
+    // resolves", so catch it and resolve an error shape rather than
+    // rejecting — a rejected IPC can leave the renderer wedged.
+    let child;
+    try {
+      child = spawn(cmd, args, { cwd, env: pipelineEnv() });
+    } catch (e) {
+      resolve({ error: `spawn failed: ${e.message}` });
+      return;
+    }
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (d) => { stdout += d.toString("utf-8"); });
@@ -543,14 +756,42 @@ function runUpdatePrelude(rtf, pineTokens, org = "oba", preludeCount = 0) {
   });
 }
 
-ipcMain.handle("refreshPrelude", async (_evt, { rtf, pine_tokens, org = "oba", prelude_count = 0 } = {}) => {
+ipcMain.handle("refreshPrelude", async (_evt, { rtf, pine_tokens, agency, prelude_count = 0 } = {}) => {
   if (typeof rtf !== "string") return { error: "refreshPrelude: missing rtf" };
   if (!Array.isArray(pine_tokens)) return { error: "refreshPrelude: missing pine_tokens" };
-  return runUpdatePrelude(rtf, pine_tokens, org, prelude_count);
+  if (!agency) return { error: "refreshPrelude: missing agency" };
+  return runUpdatePrelude(rtf, pine_tokens, agency, prelude_count);
 });
 
-ipcMain.handle("listSuggestions", async (_evt, { org = "oba" } = {}) => {
-  return runManageSuggestions(["--mode", "list", "--org", org]);
+ipcMain.handle("listAgencies", async () => {
+  return runListAgencies();
+});
+
+ipcMain.handle("createAgency", async (_evt, { name } = {}) => {
+  if (!name || !name.trim()) return { error: "createAgency: missing name", code: "invalid" };
+  return runCreateAgency(name.trim());
+});
+
+ipcMain.handle("deleteAgency", async (_evt, { slug } = {}) => {
+  if (!slug || !slug.trim()) return { error: "deleteAgency: missing slug", code: "invalid" };
+  return runAgencyTool("delete_agency", ["--slug", slug.trim()]);
+});
+
+ipcMain.handle("renameAgency", async (_evt, { slug, name } = {}) => {
+  if (!slug || !slug.trim()) return { error: "renameAgency: missing slug", code: "invalid" };
+  if (!name || !name.trim()) return { error: "renameAgency: missing name", code: "invalid" };
+  return runAgencyTool("rename_agency", ["--slug", slug.trim(), "--name", name.trim()]);
+});
+
+ipcMain.handle("learnCreateVars", async (_evt, { agency, tokens } = {}) => {
+  if (!agency) return { error: "learnCreateVars: missing agency" };
+  if (!Array.isArray(tokens) || !tokens.length) return { error: "learnCreateVars: missing tokens" };
+  return runLearnCreateVars(agency, tokens);
+});
+
+ipcMain.handle("listSuggestions", async (_evt, { agency } = {}) => {
+  if (!agency) return { error: "listSuggestions: missing agency" };
+  return runManageSuggestions(["--mode", "list", "--agency", agency]);
 });
 
 ipcMain.handle("deleteSuggestion", async (_evt, { file } = {}) => {

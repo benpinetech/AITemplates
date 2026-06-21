@@ -108,12 +108,12 @@ class TestLintRules:
         assert "no_legacy_brackets_in_pine" in ids
 
 
-# ─── org_overrides/oba.toml ────────────────────────────────────────────────
+# ─── agency_overrides/oba.toml ────────────────────────────────────────────────
 
 class TestOBAOverrides:
     @pytest.fixture(scope="class")
     def oba(self):
-        return loaders.load_org_overrides("oba")
+        return loaders.load_agency_overrides("oba")
 
     def test_identity(self, oba):
         assert oba.id == "oba"
@@ -143,10 +143,10 @@ class TestCrossAssetConsistency:
     file."""
 
     def test_all_oba_pattern_entities_in_vocabulary(self):
-        """Every Pine entity name a `org_context = "oba"` pattern emits
+        """Every Pine entity name a `agency_context = "oba"` pattern emits
         appears in oba.vocabulary.entities. Catches typos and drift."""
         from pipeline.patterns import loader, transforms
-        oba = loaders.load_org_overrides("oba")
+        oba = loaders.load_agency_overrides("oba")
         # The translation transform's RHS values are the entity names
         # that OBA-aware patterns will emit.
         emitted_entities = set(transforms._JDA_TO_PINE_ENTITY.values())

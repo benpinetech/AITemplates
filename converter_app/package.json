@@ -7,7 +7,7 @@
   "type": "module",
   "scripts": {
     "dev:renderer": "vite",
-    "dev:electron": "wait-on http://localhost:1421 && electron .",
+    "dev:electron": "wait-on http://localhost:1421 && node electron/dev-electron.cjs",
     "dev": "concurrently -k -n vite,electron -c blue,magenta \"npm:dev:renderer\" \"npm:dev:electron\"",
     "build:renderer": "vite build",
     "build": "npm run build:renderer && electron-builder",

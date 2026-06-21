@@ -7,11 +7,11 @@ flow. Pure function: same inputs → same outputs.
 Usage:
 
     from pipeline.engine.validator import Validator
-    from pipeline.grammar.loaders import load_lint_rules, load_org_overrides
+    from pipeline.grammar.loaders import load_lint_rules, load_agency_overrides
 
     validator = Validator(
         lint_rules=load_lint_rules(),
-        org=load_org_overrides("oba"),
+        agency=load_agency_overrides("oba"),
     )
     issues = validator.validate_stream(generated_pine_tokens)
     for issue in issues:
@@ -25,7 +25,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Iterable, List, Optional, Sequence, Set
 
-from ..grammar.loaders import LintRule, LintRules, OrgRoot, load_lint_rules
+from ..grammar.loaders import LintRule, LintRules, AgencyRoot, load_lint_rules
 from ..parser.pine_ast import (
     PineAtName,
     PineBinaryOp,
@@ -68,7 +68,7 @@ def _chain_bases(node: PineNode) -> Set[str]:
     """Every string-typed chain base reachable from ``node``.
 
     These are the candidate "entity" references — the names that
-    should appear in the org's vocabulary allow-list. We skip
+    should appear in the agency's vocabulary allow-list. We skip
     ``PineAtName`` bases (CreateVar declarations) and recurse into
     nested tokens / call args / control args.
     """
@@ -246,23 +246,23 @@ class Validator:
     def __init__(
         self,
         lint_rules: Optional[LintRules] = None,
-        org: Optional[OrgRoot] = None,
+        agency: Optional[AgencyRoot] = None,
     ):
         self._rules = lint_rules.lint_rule if lint_rules else load_lint_rules().lint_rule
         self._compiled = [(r, re.compile(r.match_regex)) for r in self._rules]
-        self._org = org
-        self._allowed_bases = self._build_allowed_bases(org) if org else None
+        self._agency = agency
+        self._allowed_bases = self._build_allowed_bases(agency) if agency else None
 
     @staticmethod
-    def _build_allowed_bases(org: OrgRoot) -> Set[str]:
-        """The set of legal chain-base names for this org. Includes
+    def _build_allowed_bases(agency: AgencyRoot) -> Set[str]:
+        """The set of legal chain-base names for this agency. Includes
         entities, builtins (head segment only), prompt variables, and
         a few always-acceptable names."""
-        out: Set[str] = set(org.vocabulary.entities)
-        for b in org.vocabulary.builtins:
+        out: Set[str] = set(agency.vocabulary.entities)
+        for b in agency.vocabulary.builtins:
             head = b.split(".", 1)[0]
             out.add(head)
-        out.update(org.vocabulary.prompt_variables)
+        out.update(agency.vocabulary.prompt_variables)
         # Loop-variable names declared elsewhere — we add per-stream
         # via _StructuralState; common single-letter loop vars are not
         # baked in here.
@@ -365,7 +365,7 @@ class Validator:
             out.append(ValidationIssue(
                 severity=SEVERITY_WARNING,
                 rule_id="unknown_entity",
-                message=f"chain base {base!r} not in org vocabulary",
+                message=f"chain base {base!r} not in agency vocabulary",
                 token_index=idx,
                 token_text=token.unparse(),
             ))

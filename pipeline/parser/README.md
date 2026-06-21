@@ -94,7 +94,7 @@ ast2 = parse(ast1.unparse())
 assert ast1 == ast2   # structural equality
 ```
 
-This is the property `tools/corpus_round_trip.py` checks.
+This is the property `tests/test_corpus_round_trip.py` checks.
 
 ## AST node design
 
@@ -188,10 +188,10 @@ deterministically, which it does.
 The integration test `tests/test_corpus_round_trip.py` gates the
 round-trip rate at ≥99.5% so regressions break the test.
 
-## Running the round-trip report
+## Inspecting round-trip failures
+
+Run the test verbosely and add a print for the mismatching expressions:
 
 ```bash
-./venv/bin/python Agent/v2/tools/corpus_round_trip.py             # both sides
-./venv/bin/python Agent/v2/tools/corpus_round_trip.py --side legacy
-./venv/bin/python Agent/v2/tools/corpus_round_trip.py --examples 5
+venv/bin/python -m pytest pipeline/tests/test_corpus_round_trip.py -s
 ```

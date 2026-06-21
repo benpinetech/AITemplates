@@ -6,12 +6,24 @@
 
   import SettingsDialog  from "./SettingsDialog.svelte";
   import MappingsDialog  from "./MappingsDialog.svelte";
+  import AgenciesDialog  from "./AgenciesDialog.svelte";
   import HelpDialog      from "./HelpDialog.svelte";
 
   /** @type {string} The model id surfaced as the toolbar status. */
   let model = $state("gpt-5.5");
   /** @type {boolean} Whether an API key has been saved in settings. */
   let hasApiKey = $state(false);
+
+  /** @type {Array<{ id: string, description: string }>} Agencies for the picker. */
+  let agencies = $state([]);
+  /** @type {string} Which agency new conversions are run against. Persisted.
+   * Empty until the user picks/adds one — there is no default agency. */
+  let selectedAgency = $state("");
+  /** @type {string} Last real agency selection — restored when the user opens
+   * the "Manage agencies…" sentinel so the picker doesn't lose its value. */
+  let prevAgency = $state("");
+  /** @type {boolean} Manage Agencies dialog open flag. */
+  let agenciesOpen = $state(false);
   /** @type {boolean} Settings dialog open flag. */
   let settingsOpen  = $state(false);
   /** @type {boolean} Mappings dialog open flag. */
@@ -25,7 +37,7 @@
    *   converted: { rtf: string },
    *   template_name: string | null,
    *   audience: string | null,
-   *   org: string,
+   *   agency: string,
    *   totals: {
    *     jda_tokens: number, pine_tokens: number,
    *     pattern_segments: number, llm_segments: number,
@@ -39,6 +51,9 @@
 
   /** Async work indicator for the Convert action. */
   let busy = $state(false);
+
+  /** Transient confirmation shown after a CreateVar correction is learned. */
+  let learnedNote = $state("");
 
   /** Last error string (any failure path). Cleared on next action. */
   let error = $state("");
@@ -111,13 +126,57 @@
   /** Timer handle for the debounce. Not reactive — plain JS. */
   let autoSaveTimer = null;
 
-  // Hydrate the toolbar model pill and API key presence from saved settings on mount.
+  // Hydrate the toolbar model pill, API key presence, and last-used agency
+  // from saved settings on mount. Also load the list of configured agencies
+  // for the picker. Only restore the saved agency if it still exists.
   $effect(() => {
-    window.api.getSettings().then((s) => {
+    window.api.listAgencies().then((list) => {
+      if (Array.isArray(list)) agencies = list;
+      return window.api.getSettings();
+    }).then((s) => {
+      if (!s) return;
       if (s.model) model = s.model;
       hasApiKey = !!s.api_key;
-    }).catch(() => { /* ignore — toolbar just shows defaults */ });
+      if (s.agency && agencies.some((a) => a.id === s.agency)) {
+        selectedAgency = s.agency;
+        prevAgency = s.agency;
+      }
+    }).catch(() => { /* ignore — toolbar just shows defaults, picker empty */ });
   });
+
+  // Persist the picker choice so it's the default next launch. Fire-and-forget.
+  function onAgencyChange() {
+    if (selectedAgency) window.api.setSettings({ agency: selectedAgency }).catch(() => {});
+  }
+
+  // The picker doubles as the entry point to agency management: choosing the
+  // sentinel "Manage agencies…" option opens the dialog and reverts the
+  // <select> to whatever was selected before (it's not a real choice).
+  function onAgencyPick() {
+    if (selectedAgency === "__manage__") {
+      selectedAgency = prevAgency;
+      agenciesOpen = true;
+      return;
+    }
+    prevAgency = selectedAgency;
+    onAgencyChange();
+  }
+
+  // Called by the Manage Agencies dialog after any add/rename/delete. Refresh
+  // the picker list and reconcile the active selection.
+  function onAgenciesChanged({ agencies: list, deleted, renamed } = {}) {
+    if (Array.isArray(list)) agencies = list;
+    if (deleted && selectedAgency === deleted) {
+      selectedAgency = "";
+      prevAgency = "";
+      window.api.setSettings({ agency: "" }).catch(() => {});
+    }
+    if (renamed && selectedAgency === renamed.from) {
+      selectedAgency = renamed.to;
+      prevAgency = renamed.to;
+      onAgencyChange();
+    }
+  }
 
   // Open the Settings dialog when the user picks it from the
   // application menu (File → Settings on Linux/Win, ⌘ → Preferences
@@ -183,7 +242,7 @@
       converted: { rtf: "" },
       template_name: picked.path.split(/[\\/]/).pop(),
       audience: null,
-      org: "oba",
+      agency: selectedAgency,
       totals: {
         jda_tokens: 0, pine_tokens: 0,
         suggestion_segments: 0, llm_segments: 0,
@@ -208,6 +267,10 @@
       error = "Open an RTF first.";
       return;
     }
+    if (!selectedAgency) {
+      error = "Select an agency before converting.";
+      return;
+    }
     error = "";
     busy = true;
     editingChip = null;
@@ -217,7 +280,7 @@
     redoStack = [];
     chipMap = null;
     try {
-      result = await window.api.convertRtf({ path: sourcePath });
+      result = await window.api.convertRtf({ path: sourcePath, agency: selectedAgency });
       // A fresh conversion supersedes any pending restore offer for
       // this source — running Convert is an implicit "discard recovery".
       if (recoveryOffer) {
@@ -238,13 +301,14 @@
    * save error is never fatal to the user's work).
    */
   async function buildFreshRtf() {
+    flushPineSync();   // fold any pending editor keystrokes into the RTF first
     const currentPineTokens = pineParts
       .filter((p) => p.kind === "pine")
       .map((p) => p.text);
     const r = await window.api.refreshPrelude({
       rtf: result.converted.rtf,
       pine_tokens: currentPineTokens,
-      org: result.org || "oba",
+      agency: result.agency || selectedAgency,
       prelude_count: result.prelude_pine_token_count || 0,
     });
     if (r?.ok && typeof r.rtf === "string") {
@@ -560,6 +624,20 @@
         continue;
       }
 
+      // RTF hard page break: \page but not \pagebb, \pard, etc. Without
+      // this, \page is swallowed by stripRtf as an unknown control word
+      // and the author's page break never appears in the canvas.
+      if (ch === "\\" && text.slice(i + 1, i + 5) === "page" && !/[a-zA-Z]/.test(text[i + 5] || "")) {
+        if (i > proseStart) {
+          parts.push({ kind: "prose", text: stripRtf(text.slice(proseStart, i)), start: proseStart, end: i });
+        }
+        const end = i + 5 + (text[i + 5] === " " ? 1 : 0);
+        parts.push({ kind: "page-break", start: i, end });
+        i = end;
+        proseStart = i;
+        continue;
+      }
+
       if ((ch === "%" || ch === "@") && text[i + 1] === "[") {
         let depth = 1;
         let j = i + 2;
@@ -620,13 +698,23 @@
     if (!parts.length) return [];
     const paragraphs = [[]];
     let cur = paragraphs[0];
+    // A pending hard page break (\page): applied to the next paragraph
+    // that actually receives content (so blank lines between the break
+    // and the next text don't soak it up). A section break starts a new
+    // paper, which is itself a page boundary, so it cancels any pending
+    // \page to avoid an extra blank page (e.g. the \page \par \sect run
+    // that legacy templates commonly emit).
+    let pendingBreak = false;
+    const applyPending = () => { if (pendingBreak) { cur.__breakBefore = true; pendingBreak = false; } };
     parts.forEach((part, idx) => {
       if (part.kind === "section-break") {
         paragraphs.push({ __sectionBreak: true });
         cur = [];
         paragraphs.push(cur);
+        pendingBreak = false;
         return;
       }
+      if (part.kind === "page-break") { pendingBreak = true; return; }
       if (part.kind === "prose") {
         const lines = (part.text || "").split("\n");
         // ``lineStart`` is the offset of this line within the part's
@@ -640,11 +728,21 @@
             acc += 1;   // the "\n" that split() removed
           }
           if (line.length > 0) {
+            applyPending();
             cur.push({ kind: "prose", text: line, partIdx: idx, lineStart: acc });
+          } else if (i > 0) {
+            // A blank line. Anchor the empty paragraph to its raw-RTF
+            // position so the mapper can click it and type — text is
+            // inserted at this offset (no reconstruction of existing
+            // content, so formatting elsewhere is never disturbed). If a
+            // later chip lands in this paragraph it's no longer empty and
+            // the anchor simply goes unused.
+            cur.__anchor = { partIdx: idx, lineStart: acc };
           }
           acc += line.length;
         });
       } else {
+        applyPending();
         cur.push({ kind: "chip", idx });
       }
     });
@@ -685,6 +783,23 @@
     groupParagraphs(pineParts),
     parseSections(result?.converted?.rtf || ""),
   ));
+
+  // The converted pane is a SINGLE paper holding every section (the legacy
+  // pane gets one paper per section instead). So it must paginate at the
+  // document's dominant page size — the tallest/widest section — not
+  // ``pineSections[0]``. Many templates open with a short letterhead/title
+  // section (e.g. heightPx 396); keying off section 0 would wrongly mark the
+  // whole multi-page document "short" and skip pagination entirely.
+  let pinePageHeight = $derived(
+    pineSections.length
+      ? Math.max(...pineSections.map((s) => s.heightPx || 0))
+      : PAGE_HEIGHT,
+  );
+  let pinePageWidth = $derived(
+    pineSections.length
+      ? Math.max(...pineSections.map((s) => s.widthPx || 0))
+      : 816,
+  );
 
   // ── Pagination ──────────────────────────────────────────────────
   // CSS alone can't break content at page boundaries (without
@@ -731,11 +846,27 @@
       const topY    = r.top    - paperRect.top;
       const bottomY = r.bottom - paperRect.top;
       const height  = bottomY - topY;
+      const pageIdx = Math.max(0, Math.floor((topY - PAGE_TOP_MARGIN) / PAGE_CYCLE));
+      // Authored hard page / section break: force this paragraph to the top
+      // of the next page (unless it already sits at a page top, so we never
+      // emit a gratuitous blank page). Checked before the tall-paragraph
+      // skip so an over-long block still *starts* on a fresh page.
+      if (p.dataset && p.dataset.breakBefore === "1") {
+        const pageTop = pageIdx * PAGE_CYCLE + PAGE_TOP_MARGIN;
+        if (topY > pageTop + 1) {
+          const nextPageStart = (pageIdx + 1) * PAGE_CYCLE + PAGE_TOP_MARGIN;
+          const refBottom = i > 0
+            ? (ps[i - 1].getBoundingClientRect().bottom - paperRect.top)
+            : PAGE_TOP_MARGIN;
+          const newMarginTop = nextPageStart - refBottom;
+          if (newMarginTop > 0) p.style.marginTop = `${newMarginTop}px`;
+        }
+        continue;
+      }
       // Paragraphs taller than a full page can't be helped — let them
       // overflow whichever page they start on rather than chasing them
       // forever.
       if (height >= CONTENT_PER_PAGE) continue;
-      const pageIdx = Math.max(0, Math.floor((topY - PAGE_TOP_MARGIN) / PAGE_CYCLE));
       const contentBottom = pageIdx * PAGE_CYCLE + PAGE_TOP_MARGIN + CONTENT_PER_PAGE;
       if (bottomY > contentBottom) {
         const nextPageStart = (pageIdx + 1) * PAGE_CYCLE + PAGE_TOP_MARGIN;
@@ -1045,19 +1176,439 @@
     const cleaned = (innerText || "").replace(/ /g, " ").trim();
     // The contenteditable holds only the chip's *inner* text — the
     // literal "@[" and "]" delimiters are rendered as non-editable
-    // bracket spans, so the user can't accidentally delete them.
-    // Strip defensively in case a paste smuggled them in, then
-    // re-wrap so the chip survives the next tokenize pass.
-    let inner = cleaned.replace(/@\[([^\]]*)\]/g, "$1").replace(/^@\[/, "").replace(/\]+$/, "");
+    // bracket spans. Preserve a full ``@[...]`` the mapper typed verbatim;
+    // only wrap bare inner text. (We used to strip any brackets and
+    // re-wrap, which silently deleted ``@[]`` a mapper deliberately added.)
     const part = pineParts[partIndex];
     if (!part) { editingChip = null; return; }
-    if (!inner) { editingChip = null; return; }
-    const wrapped = `@[${inner}]`;
+    if (!cleaned) { editingChip = null; return; }
+    const wrapped = /^@\[[\s\S]*\]$/.test(cleaned) ? cleaned : `@[${cleaned}]`;
     if (wrapped === part.text) { editingChip = null; return; }
-    applyPineEdit(partIndex, part, wrapped, defaultScope());
+    // CreateVar (prelude) chips are not body fill-points — they have no JDA
+    // source segment. A correction here teaches the agency's role config so
+    // future preludes generate it correctly (and across templates), rather
+    // than persisting a per-token suggestion.
+    if (/CreateVar/.test(wrapped) || /CreateVar/.test(part.text)) {
+      learnCreateVarEdit(partIndex, part, wrapped);
+    } else {
+      applyPineEdit(partIndex, part, wrapped, defaultScope());
+    }
     editingChip = null;
     hoverInfo = null;
     highlightedSegmentIndex = null;
+  }
+
+  /**
+   * Apply a corrected CreateVar chip: splice it in locally for immediate
+   * feedback, then teach the agency config so the correction generalizes.
+   * The config is the durable store — the next conversion (and the
+   * save-time prelude regeneration) reflect what was learned here.
+   */
+  function learnCreateVarEdit(partIndex, part, newText) {
+    undoStack = [...undoStack, { rtf: result.converted.rtf, editedKeys: { ...editedKeys }, chipMap }];
+    redoStack = [];
+    const rtf = result.converted.rtf;
+    result.converted.rtf = rtf.slice(0, part.start) + newText + rtf.slice(part.end);
+
+    const agency = result.agency || selectedAgency;
+    if (!agency) return;
+    window.api.learnCreateVars({ agency, tokens: [newText] }).then((r) => {
+      if (r?.error) {
+        console.warn("learnCreateVars failed:", r.error);
+      } else if (r?.entities?.length) {
+        error = "";
+        learnedNote = `Learned CreateVar for ${r.entities.join(", ")} — future templates will generate it.`;
+      }
+    }).catch((e) => console.warn("learnCreateVars failed:", e));
+  }
+
+  // ── Contenteditable editor for the converted (Pine) pane ─────────────
+  // The pane is one contenteditable surface so editing feels like a real
+  // text editor: click anywhere, native caret/selection, type and delete
+  // freely. Chips (@[…] / %[…]) are rendered as atomic contenteditable=false
+  // widgets. Edits are synced back into the RTF (the source of truth) by a
+  // prefix/suffix diff over the strip map, so untouched content — including
+  // all its RTF formatting — is preserved; only the changed span is spliced.
+
+  /** @type {HTMLElement | null} The contenteditable surface. */
+  let pineEditorEl = $state(null);
+  /** @type {HTMLElement | null} The .paper page wrapping the editor (paginated). */
+  let pinePaperEl = $state(null);
+  /** Bump to force an imperative rebuild of the editor DOM from the model. */
+  let editorVersion = $state(0);
+  // Non-reactive editor bookkeeping.
+  let pineDisplay = { text: "", map: [] };  // displayed text + per-char → RTF offset
+  let pineTyping = false;                     // suppress rebuild while the user types
+  let pineSyncTimer = null;
+  let lastBuiltRtf = null;
+  let lastBuiltVersion = -1;
+
+  function bumpEditor() { editorVersion++; }
+
+  /** Build (text, map): the displayed text and, per char, its RTF offset.
+   *  Chips contribute their token text mapped to the chip's start offset;
+   *  prose contributes its stripped text mapped through the per-part strip map. */
+  function computePineDisplay(rtf) {
+    const parts = tokenize(rtf);
+    let text = "";
+    const map = [];
+    for (const part of parts) {
+      if (part.kind === "pine" || part.kind === "legacy") {
+        for (const ch of part.text) { map.push(part.start); text += ch; }
+      } else if (part.kind === "prose") {
+        const { map: pmap } = stripRtfWithMap(rtf.slice(part.start, part.end));
+        for (let k = 0; k < part.text.length; k++) {
+          map.push(part.start + (pmap[k] ?? 0));
+          text += part.text[k];
+        }
+      }
+    }
+    map.push(rtf.length);   // boundary; clamped to the body on use
+    return { text, map, parts };
+  }
+
+  function recomputePineDisplay() {
+    const rtf = result?.converted?.rtf || "";
+    const d = computePineDisplay(rtf);
+    pineDisplay = { text: d.text, map: d.map };
+  }
+
+  function makeChipSpan(part, pi) {
+    const span = document.createElement("span");
+    span.className = part.kind === "pine" ? "token-pine" : "token-legacy";
+    if (part.kind === "pine") {
+      const es = editStateForPart(pi);
+      if (es?.status === "saved") span.classList.add("edited");
+      else if (es?.status === "pending") span.classList.add("saving");
+      else if (es?.status === "error") span.classList.add("save-error");
+    } else {
+      span.classList.add("static");
+    }
+    span.contentEditable = "false";
+    span.dataset.partIdx = String(pi);
+    span.textContent = part.text;
+    return span;
+  }
+
+  /** Imperatively (re)build the editor DOM from the current RTF as <p> block
+   *  paragraphs (one per source paragraph) with chips as atomic widgets.
+   *  Blocks let the legacy pagination logic push paragraphs off page gaps. */
+  function buildPineEditor() {
+    const el = pineEditorEl;
+    if (!el) return;
+    const rtf = result?.converted?.rtf || "";
+    const d = computePineDisplay(rtf);
+    pineDisplay = { text: d.text, map: d.map };
+
+    el.replaceChildren();
+    let block = document.createElement("p");
+    el.appendChild(block);
+    // This pane is a single paper, so a section OR page break can't start a
+    // new <article> the way the legacy pane does — instead it forces a page
+    // break before the next paragraph that holds content. ``adjustPagination``
+    // honors ``data-break-before`` by pushing that paragraph to the next page,
+    // leaving the gap the page-break band paints into. A blank block (the
+    // <br>-only paragraphs below) doesn't consume the pending break, so the
+    // common \page \par \sect run collapses to a single break.
+    let pendingBreak = false;
+    let blockHasContent = false;
+    const ensureBreakBlock = () => {
+      if (!pendingBreak) return;
+      if (blockHasContent) { block = document.createElement("p"); el.appendChild(block); blockHasContent = false; }
+      block.dataset.breakBefore = "1";
+      pendingBreak = false;
+    };
+    d.parts.forEach((part, pi) => {
+      if (part.kind === "section-break" || part.kind === "page-break") { pendingBreak = true; return; }
+      if (part.kind === "pine" || part.kind === "legacy") {
+        ensureBreakBlock();
+        block.appendChild(makeChipSpan(part, pi));
+        blockHasContent = true;
+      } else if (part.kind === "prose") {
+        const segs = part.text.split("\n");
+        segs.forEach((seg, i) => {
+          if (i > 0) { block = document.createElement("p"); el.appendChild(block); blockHasContent = false; }
+          if (seg) { ensureBreakBlock(); block.appendChild(document.createTextNode(seg)); blockHasContent = true; }
+        });
+      }
+    });
+    // Empty paragraphs need a <br> so they have height and a caret target.
+    el.querySelectorAll("p").forEach((p) => { if (!p.firstChild) p.appendChild(document.createElement("br")); });
+    repaginatePine();
+  }
+
+  /** Serialize one block's inline content: text verbatim, chips as their
+   *  token, <br> placeholders ignored. */
+  function serializeInline(node) {
+    let s = "";
+    for (const c of node.childNodes) {
+      if (c.nodeType === Node.TEXT_NODE) s += c.textContent;
+      else if (c.nodeType === Node.ELEMENT_NODE) {
+        if (c.dataset && c.dataset.partIdx !== undefined) s += c.textContent;
+        else if (c.tagName === "BR") { /* placeholder — ignore */ }
+        else s += serializeInline(c);
+      }
+    }
+    return s;
+  }
+
+  /** Serialize the editor to the same coordinate space as ``pineDisplay.text``:
+   *  each top-level block is a line, joined by "\n". */
+  function serializePineEditor() {
+    const el = pineEditorEl;
+    if (!el) return "";
+    const lines = [];
+    for (const node of el.childNodes) {
+      if (node.nodeType === Node.TEXT_NODE) lines.push(node.textContent);
+      else if (node.nodeType === Node.ELEMENT_NODE) lines.push(serializeInline(node));
+    }
+    return lines.join("\n");
+  }
+
+  /** Re-run the legacy pagination pass over the Pine page once layout + fonts
+   *  have settled (mirrors paginateAction's timing so heights measure right). */
+  function repaginatePine() {
+    const paper = pinePaperEl;
+    if (!paper) return;
+    requestAnimationFrame(() => {
+      const run = () => requestAnimationFrame(() => { try { adjustPagination(paper); } catch { /* layout not ready */ } });
+      if (document.fonts && document.fonts.ready) document.fonts.ready.then(run);
+      else run();
+    });
+  }
+
+  /** Convert typed plain text to RTF: escape control chars, newlines → \par. */
+  function textToRtf(s) {
+    let out = "";
+    for (const ch of s) {
+      if (ch === "\n") { out += "\\par\n"; continue; }
+      const code = ch.codePointAt(0);
+      if (ch === "\\") out += "\\\\";
+      else if (ch === "{") out += "\\{";
+      else if (ch === "}") out += "\\}";
+      else if (code < 128) out += ch;
+      else if (code <= 0xffff) out += `\\u${code > 32767 ? code - 65536 : code}?`;
+      else out += "?";
+    }
+    return out;
+  }
+
+  /** Diff the live editor against the known display text and splice the one
+   *  changed region into the RTF. Robust for the single contiguous edit a
+   *  keystroke/selection-replace produces. */
+  function syncPineEditor() {
+    if (!pineEditorEl) return;
+    const dom = serializePineEditor();
+    const old = pineDisplay.text;
+    if (dom === old) return;
+
+    const minLen = Math.min(dom.length, old.length);
+    let p = 0;
+    while (p < minLen && dom[p] === old[p]) p++;
+    let s = 0;
+    while (s < minLen - p && dom[dom.length - 1 - s] === old[old.length - 1 - s]) s++;
+
+    const oldStart = p;
+    const oldEnd = old.length - s;
+    const inserted = dom.slice(p, dom.length - s);
+
+    const rtf = result.converted.rtf;
+    const brace = rtf.lastIndexOf("}");
+    const bodyEnd = brace < 0 ? rtf.length : brace;
+    const map = pineDisplay.map;
+    let rtfStart = Math.min(map[oldStart] ?? bodyEnd, bodyEnd);
+    let rtfEnd = Math.min(map[oldEnd] ?? bodyEnd, bodyEnd);
+    if (rtfEnd < rtfStart) rtfEnd = rtfStart;
+
+    undoStack = [...undoStack, { rtf, editedKeys: { ...editedKeys }, chipMap }];
+    redoStack = [];
+    result.converted.rtf = rtf.slice(0, rtfStart) + textToRtf(inserted) + rtf.slice(rtfEnd);
+    // The DOM already reflects the edit; refresh the display model so the
+    // next diff is incremental — but DON'T rebuild the DOM (caret stays).
+    recomputePineDisplay();
+    lastBuiltRtf = result.converted.rtf;   // keep the rebuild effect quiet
+    // Page reflow is driven by the ResizeObserver on the editor — no need
+    // to paginate here (avoids double work on every keystroke).
+  }
+
+  function flushPineSync() {
+    if (pineSyncTimer) { clearTimeout(pineSyncTimer); pineSyncTimer = null; }
+    if (pineEditorEl && pineTyping) syncPineEditor();
+  }
+
+  function onEditorFocus() {
+    pineTyping = true;
+    // Make Enter produce <p> blocks (not <div>) so the structure stays
+    // consistent with how buildPineEditor lays out paragraphs.
+    try { document.execCommand("defaultParagraphSeparator", false, "p"); } catch { /* unsupported */ }
+  }
+  function onEditorBlur() {
+    flushPineSync();
+    pineTyping = false;
+    lastBuiltRtf = result?.converted?.rtf || "";   // DOM already matches; skip rebuild
+  }
+  function onEditorInput() {
+    if (pineSyncTimer) clearTimeout(pineSyncTimer);
+    pineSyncTimer = setTimeout(() => { pineSyncTimer = null; syncPineEditor(); }, 140);
+  }
+  function onEditorKeydown(e) {
+    if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "y")) {
+      // Let the app-level undo/redo own history (it snapshots full RTF).
+      e.preventDefault();
+      flushPineSync();
+      if (e.key === "y" || e.shiftKey) handleRedo(); else handleUndo();
+      // Rebuild now even though the surface is focused — undo/redo is a
+      // deliberate jump, so a caret reset is expected.
+      buildPineEditor();
+      lastBuiltRtf = result?.converted?.rtf || "";
+    }
+  }
+  function onEditorPaste(e) {
+    e.preventDefault();
+    const txt = (e.clipboardData?.getData("text/plain") || "");
+    document.execCommand("insertText", false, txt);
+  }
+  function onEditorClick(e) {
+    const chip = e.target.closest?.("[data-part-idx]");
+    if (!chip) return;
+    const partIdx = Number(chip.dataset.partIdx);
+    const part = pineParts[partIdx];
+    if (!part || part.kind !== "pine") return;   // legacy chips are read-only
+    const r = chip.getBoundingClientRect();
+    editingChip = { partIndex: partIdx, x: r.left, y: r.bottom + 4, text: part.text };
+  }
+  function onEditorHover(e) {
+    const chip = e.target.closest?.("[data-part-idx]");
+    if (!chip) { hideInfo(); return; }
+    const partIdx = Number(chip.dataset.partIdx);
+    if (pineParts[partIdx]?.kind === "pine") showInfoPine(partIdx, e);
+  }
+
+  /** Commit the floating chip editor. Reuses the suggestion / CreateVar-learn
+   *  paths so accepted edits still persist and generalize. */
+  function commitChipEditor(raw) {
+    const ec = editingChip;
+    editingChip = null;
+    if (!ec) return;
+    const part = pineParts[ec.partIndex];
+    if (!part) return;
+    const cleaned = (raw ?? "").trim();
+    if (!cleaned) return;
+    const wrapped = /^@\[[\s\S]*\]$/.test(cleaned) ? cleaned : `@[${cleaned}]`;
+    if (wrapped === part.text) return;
+    if (/CreateVar/.test(wrapped) || /CreateVar/.test(part.text)) {
+      learnCreateVarEdit(ec.partIndex, part, wrapped);
+    } else {
+      applyPineEdit(ec.partIndex, part, wrapped, defaultScope());
+    }
+    bumpEditor();
+  }
+
+  // Rebuild the editor DOM on external RTF changes (convert, undo/redo, chip
+  // edit, add-var, prelude refresh) — but never mid-typing, so the caret is
+  // only disturbed by deliberate non-typing actions.
+  $effect(() => {
+    editorVersion;                          // explicit rebuild signal
+    const rtf = result?.converted?.rtf || "";   // track external changes
+    if (pineTyping) return;
+    queueMicrotask(() => {
+      if (!pineEditorEl) return;
+      if (result?.converted?.rtf === lastBuiltRtf && editorVersion === lastBuiltVersion) return;
+      buildPineEditor();
+      lastBuiltRtf = result?.converted?.rtf || "";
+      lastBuiltVersion = editorVersion;
+    });
+  });
+
+  // Keep the Pine page paginated as its content height settles — fonts
+  // loading, the contenteditable reflowing, edits adding/removing lines.
+  // Mirrors the legacy pane's ResizeObserver so the two paginate identically.
+  // The rafId guard stops adjustPagination's own margin writes from cascading.
+  $effect(() => {
+    const paper = pinePaperEl;
+    const prose = pineEditorEl;
+    if (!paper || !prose || typeof ResizeObserver === "undefined") return;
+    let rafId = null;
+    const schedule = () => {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        try { adjustPagination(paper); } catch { /* not laid out yet */ }
+      });
+    };
+    const obs = new ResizeObserver(schedule);
+    obs.observe(prose);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(schedule);
+    else schedule();
+    return () => { if (rafId !== null) cancelAnimationFrame(rafId); obs.disconnect(); };
+  });
+
+  /**
+   * Escape a plain-text run for RTF: backslash and braces are control
+   * characters; non-ASCII is emitted as a ``\uN?`` unicode escape (signed
+   * 16-bit, per the RTF spec) with a ``?`` ASCII fallback char.
+   */
+  function escapeRtf(s) {
+    let out = "";
+    for (const ch of s) {
+      const code = ch.codePointAt(0);
+      if (ch === "\\") out += "\\\\";
+      else if (ch === "{") out += "\\{";
+      else if (ch === "}") out += "\\}";
+      else if (code < 128) out += ch;
+      else if (code <= 0xffff) out += `\\u${code > 32767 ? code - 65536 : code}?`;
+      else out += "?";
+    }
+    return out;
+  }
+
+  /**
+   * Commit a free-text edit of a prose run back into the converted RTF.
+   * The rendered run is a stripped slice of the raw RTF; we use the
+   * strip map to find the exact raw byte range the visible line occupies
+   * and replace it with the re-escaped new text. Inline formatting inside
+   * an edited run is not preserved (acceptable for plain body text), but
+   * surrounding RTF structure is untouched.
+   */
+  function commitProseEdit(partIndex, lineStart, originalText, rawInner) {
+    const newText = (rawInner ?? "").replace(/\u00a0/g, " ").replace(/\r/g, "");
+    if (newText === originalText) return;
+    const part = pineParts[partIndex];
+    if (!part || part.kind !== "prose") return;
+
+    const rawSlice = result.converted.rtf.slice(part.start, part.end);
+    const { map } = stripRtfWithMap(rawSlice);
+    const a = Math.min(lineStart, map.length - 1);
+    const b = Math.min(lineStart + originalText.length, map.length - 1);
+    const rtfStart = part.start + map[a];
+    const rtfEnd = part.start + map[b];
+
+    undoStack = [...undoStack, { rtf: result.converted.rtf, editedKeys: { ...editedKeys }, chipMap }];
+    redoStack = [];
+    const rtf = result.converted.rtf;
+    result.converted.rtf = rtf.slice(0, rtfStart) + escapeRtf(newText) + rtf.slice(rtfEnd);
+  }
+
+  /**
+   * Insert free text typed on a blank line. Pure insertion at the line's
+   * anchored raw-RTF offset — existing content (and its formatting) is
+   * untouched. After commit the line re-tokenizes into a normal prose run.
+   */
+  function commitBlankInsert(anchor, rawText, el) {
+    const text = (rawText ?? "").replace(/\u00a0/g, " ").replace(/[\r\n]/g, "");
+    if (el) el.textContent = "";   // clear the editable span; the RTF is the source of truth
+    if (!text) return;
+    const part = pineParts[anchor.partIdx];
+    if (!part || part.kind !== "prose") return;
+
+    const { map } = stripRtfWithMap(result.converted.rtf.slice(part.start, part.end));
+    const idx = Math.min(anchor.lineStart, map.length - 1);
+    const off = part.start + map[idx];
+
+    undoStack = [...undoStack, { rtf: result.converted.rtf, editedKeys: { ...editedKeys }, chipMap }];
+    redoStack = [];
+    const rtf = result.converted.rtf;
+    result.converted.rtf = rtf.slice(0, off) + escapeRtf(text) + rtf.slice(off);
   }
 
   /**
@@ -1148,7 +1699,7 @@
     // "An object could not be cloned." JSON-roundtrip strips them for
     // the array fields (newPineTokens is already plain JS).
     const payload = {
-      org: result.org || "oba",
+      agency: result.agency || selectedAgency,
       scope: { kind: effectiveScope.kind, value: effectiveScope.value ?? "" },
       jda_tokens: Array.from(sourceSeg.jda_tokens || []),
       pine_tokens: Array.from(newPineTokens),
@@ -1251,7 +1802,7 @@
     }
 
     const payload = {
-      org: result.org || "oba",
+      agency: result.agency || selectedAgency,
       scope: { kind: effectiveScope.kind, value: effectiveScope.value ?? "" },
       jda_tokens: Array.from(sourceSeg.jda_tokens || []),
       pine_tokens: [],   // empty rewrite = drop the mapping
@@ -1286,67 +1837,83 @@
    * that never lands inside an RTF control word. Returns null if the
    * point isn't over insertable content.
    */
+  /** Serialized length a node contributes (mirrors serializeInline). */
+  function serializedLen(node) {
+    if (node.nodeType === Node.TEXT_NODE) return node.textContent.length;
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      if (node.dataset && node.dataset.partIdx !== undefined) return node.textContent.length;
+      if (node.tagName === "BR") return 0;
+      let s = 0;
+      for (const c of node.childNodes) s += serializedLen(c);
+      return s;
+    }
+    return 0;
+  }
+
+  /** Displayed-text index of a (node, offset) caret in the editor — the same
+   *  coordinate space as ``pineDisplay.text`` (top-level blocks joined by \n). */
+  function displayedIndexOf(targetNode, targetOffset) {
+    const el = pineEditorEl;
+    if (!el) return null;
+    let idx = 0;
+    let found = null;
+
+    const walk = (node) => {
+      if (found != null) return;
+      if (node === targetNode) {
+        if (node.nodeType === Node.TEXT_NODE) { found = idx + targetOffset; return; }
+        // element caret: sum serialized length of the first targetOffset children
+        for (let k = 0; k < targetOffset && k < node.childNodes.length; k++) idx += serializedLen(node.childNodes[k]);
+        found = idx; return;
+      }
+      if (node.nodeType === Node.TEXT_NODE) { idx += node.textContent.length; return; }
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        if (node.dataset && node.dataset.partIdx !== undefined) { idx += node.textContent.length; return; }
+        if (node.tagName === "BR") return;
+        for (const c of node.childNodes) { walk(c); if (found != null) return; }
+      }
+    };
+
+    const blocks = el.childNodes;
+    for (let b = 0; b < blocks.length && found == null; b++) {
+      if (b > 0) idx += 1;            // the "\n" joining top-level blocks
+      walk(blocks[b]);
+    }
+    return found;
+  }
+
+  /** Resolve a click point in the editor to an RTF insertion offset (+ caret
+   *  pixel rect), via the native caret position mapped through pineDisplay. */
   function insertPointFromXY(clientX, clientY) {
-    let node = null;
-    let offset = 0;
-    if (document.caretPositionFromPoint) {
+    if (!pineEditorEl) return null;
+    let node = null, offset = 0, range = null;
+    if (document.caretRangeFromPoint) {
+      range = document.caretRangeFromPoint(clientX, clientY);
+      if (range) { node = range.startContainer; offset = range.startOffset; }
+    } else if (document.caretPositionFromPoint) {
       const pos = document.caretPositionFromPoint(clientX, clientY);
-      if (!pos) return null;
-      node = pos.offsetNode;
-      offset = pos.offset;
-    } else if (document.caretRangeFromPoint) {
-      const r = document.caretRangeFromPoint(clientX, clientY);
-      if (!r) return null;
-      node = r.startContainer;
-      offset = r.startOffset;
-    } else {
-      return null;
+      if (pos) { node = pos.offsetNode; offset = pos.offset; range = document.createRange(); range.setStart(node, offset); }
     }
+    if (!node || !pineEditorEl.contains(node)) return null;
 
-    const el = node.nodeType === 3 ? node.parentElement : node;
-    const host = el?.closest?.("[data-part-idx]");
-    if (!host) return null;
-    const partIdx = Number(host.dataset.partIdx);
-    const part = pineParts[partIdx];
-    if (!part) return null;
+    const dispIdx = displayedIndexOf(node, offset);
+    if (dispIdx == null) return null;
+    const map = pineDisplay.map;
+    const brace = (result.converted.rtf || "").lastIndexOf("}");
+    const bodyEnd = brace < 0 ? (result.converted.rtf || "").length : brace;
+    const rtfOffset = Math.min(map[Math.min(dispIdx, map.length - 1)] ?? bodyEnd, bodyEnd);
 
-    const rect = host.getBoundingClientRect();
-
-    // Chips are atomic — snap to the side the cursor is closest to.
-    if (part.kind === "pine" || part.kind === "legacy") {
-      const after = clientX > rect.left + rect.width / 2;
-      return {
-        rtfOffset: after ? part.end : part.start,
-        x: after ? rect.right : rect.left,
-        y: rect.top,
-        height: rect.height,
-      };
-    }
-
-    // Prose: map the caret's stripped-text index to a raw offset.
-    const lineStart = Number(host.dataset.lineStart || 0);
-    const slice = result.converted.rtf.slice(part.start, part.end);
-    const { map } = stripRtfWithMap(slice);
-    const strippedIdx = Math.min(lineStart + offset, map.length - 1);
-    const rtfOffset = part.start + map[strippedIdx];
-
-    // Caret pixel position for the visible bar.
-    let cx = rect.left;
-    let cy = rect.top;
-    let ch = rect.height;
+    let cx = clientX, cy = clientY, ch = 16;
     try {
-      const range = document.createRange();
-      range.setStart(node, offset);
-      range.collapse(true);
-      const cr = range.getClientRects()[0] || range.getBoundingClientRect();
-      if (cr) { cx = cr.left; cy = cr.top; ch = cr.height || rect.height; }
-    } catch { /* fall back to host rect */ }
-
+      const cr = (range?.getClientRects?.()[0]) || range?.getBoundingClientRect?.();
+      if (cr && cr.height) { cx = cr.left; cy = cr.top; ch = cr.height; }
+    } catch { /* fall back to cursor coords */ }
     return { rtfOffset, x: cx, y: cy, height: ch };
   }
 
   function onPineContextMenu(e) {
     if (!result?.converted?.rtf || editingChip) return;
+    flushPineSync();               // fold pending keystrokes so the map is current
     const point = insertPointFromXY(e.clientX, e.clientY);
     if (!point) return;            // not over insertable content
     e.preventDefault();
@@ -1383,17 +1950,13 @@
   function confirmAddVar() {
     if (!addingVar || !insertAt) return;
     const legacy = (addingVar.legacyToken || "").trim();
-    const inner = (addingVar.pineText || "")
-      .trim()
-      .replace(/@\[([^\]]*)\]/g, "$1")
-      .replace(/^@\[/, "")
-      .replace(/\]+$/, "");
+    const raw = (addingVar.pineText || "").trim();
 
     if (!legacy) {
       addingVar = { ...addingVar, status: "error", error: "Pick a legacy variable to tie this to." };
       return;
     }
-    if (!inner) {
+    if (!raw) {
       addingVar = { ...addingVar, status: "error", error: "Enter the Pine variable text." };
       return;
     }
@@ -1403,11 +1966,12 @@
       return;
     }
 
-    const chip = `@[${inner}]`;
+    // Preserve a full ``@[...]`` verbatim; only wrap bare text.
+    const chip = /^@\[[\s\S]*\]$/.test(raw) ? raw : `@[${raw}]`;
     const off = insertAt.rtfOffset;
     addingVar = { ...addingVar, status: "saving", error: "" };
     const payload = {
-      org: result.org || "oba",
+      agency: result.agency || selectedAgency,
       scope: { kind: effectiveScope.kind, value: effectiveScope.value ?? "" },
       jda_tokens: [legacy],
       pine_tokens: [chip],
@@ -1431,6 +1995,7 @@
         result.converted.rtf = rtf.slice(0, off) + chip + rtf.slice(off);
         addingVar = null;
         insertAt = null;
+        bumpEditor();   // rebuild the editor so the new chip renders
       } else {
         addingVar = { ...addingVar, status: "error", error: r?.error || "save failed" };
       }
@@ -1584,18 +2149,43 @@
         Redo
       </button>
       <span class="btn-sep"></span>
+      <select
+        class="agency-select"
+        class:placeholder={!selectedAgency}
+        bind:value={selectedAgency}
+        onchange={onAgencyPick}
+        disabled={busy}
+        title="Which agency this template belongs to"
+      >
+        <option value="" disabled>Select agency</option>
+        {#each agencies as a (a.id)}
+          <option value={a.id} title={a.description}>{a.description || a.id}</option>
+        {/each}
+        <option value="__manage__">⚙ Manage agencies…</option>
+      </select>
       <span
         class="convert-wrap"
-        title={!hasApiKey ? "Set your OpenAI API key in Settings before converting" : ""}
+        title={!hasApiKey ? "Set your OpenAI API key in Settings before converting"
+             : !selectedAgency ? "Select an agency first" : ""}
       >
-        <button class="btn-primary" onclick={handleConvert} disabled={busy || !sourcePath || !hasApiKey}>
+        <button class="btn-primary" onclick={handleConvert} disabled={busy || !sourcePath || !hasApiKey || !selectedAgency}>
           {busy ? "Converting…" : "Convert"}
         </button>
       </span>
     </div>
 
-    <!-- Right: file context + model -->
+    <!-- Right: mappings + file context + model -->
     <div class="toolbar-right">
+      <button class="btn-icon" onclick={() => (mappingsOpen = true)} title="Saved mappings">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2"/>
+          <line x1="3" y1="9" x2="21" y2="9"/>
+          <line x1="3" y1="15" x2="21" y2="15"/>
+          <line x1="12" y1="3" x2="12" y2="21"/>
+        </svg>
+        Mappings
+      </button>
+      <span class="btn-sep"></span>
       <div class="file-info">
         <span class="file-name" class:placeholder={!result?.template_name}>
           {result?.template_name || "No file loaded"}
@@ -1613,6 +2203,11 @@
 
   {#if error}
     <div class="error-bar">⚠ {error}</div>
+  {/if}
+  {#if learnedNote}
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="learned-bar" onclick={() => (learnedNote = "")}>✓ {learnedNote}</div>
   {/if}
 
   {#if recoveryOffer}
@@ -1649,7 +2244,7 @@
             >
               <div class="prose">
                 {#each section.paragraphs as paragraph}
-                  <p>
+                  <p data-break-before={paragraph.__breakBefore ? "1" : null}>
                     {#each paragraph as item}
                       {#if item.kind === "chip"}
                         {@const part = legacyParts[item.idx]}
@@ -1699,89 +2294,53 @@
             </div>
           </article>
         {:else}
-          {#each pineSections as section}
-            <article
-              class="paper"
-              class:paginated={section.heightPx >= PAGE_HEIGHT}
-              data-section-height={section.heightPx}
-              style="max-width: {section.widthPx}px"
-              use:paginateAction={section.paragraphs}
-            >
-              <div class="prose">
-                {@render renderPineParagraphs(section.paragraphs)}
-              </div>
-            </article>
-          {/each}
+          <article
+            class="paper"
+            class:paginated={pinePageHeight >= PAGE_HEIGHT}
+            data-section-height={pinePageHeight}
+            style="max-width: {pinePageWidth}px"
+            bind:this={pinePaperEl}
+          >
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div
+              class="prose pine-editor"
+              contenteditable="true"
+              spellcheck="false"
+              bind:this={pineEditorEl}
+              onfocusin={onEditorFocus}
+              onfocusout={onEditorBlur}
+              oninput={onEditorInput}
+              onkeydown={onEditorKeydown}
+              onpaste={onEditorPaste}
+              onclick={onEditorClick}
+              onmouseover={onEditorHover}
+              onmouseout={hideInfo}
+            ></div>
+          </article>
         {/if}
       </div>
     </section>
   </main>
 
-  {#snippet renderPineParagraphs(paragraphs)}
-    {#each paragraphs as paragraph}
-      <p>
-        {#each paragraph as item}
-          {#if item.kind === "chip"}
-            {@const i = item.idx}
-            {@const part = pineParts[i]}
-            {#if part.kind === "pine"}
-              {#if editingChip?.partIndex === i}
-                <!-- svelte-ignore a11y_no_static_element_interactions -->
-                <span class="token-pine editing"><span class="chip-bracket" aria-hidden="true">@[</span><span
-                    class="chip-inner"
-                    contenteditable="true"
-                    spellcheck="false"
-                    use:autofocus
-                    onblur={(e) => commitEdit(e.currentTarget.innerText)}
-                    onkeydown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        e.currentTarget.blur();
-                      } else if (e.key === "Escape") {
-                        e.preventDefault();
-                        cancelEdit();
-                      }
-                    }}
-                    onpaste={(e) => {
-                      e.preventDefault();
-                      const raw = e.clipboardData?.getData("text/plain") || "";
-                      const text = raw.replace(/@\[([^\]]*)\]/g, "$1").trim();
-                      document.execCommand("insertText", false, text);
-                    }}
-                  >{part.text.replace(/^@\[/, "").replace(/\]+$/, "")}</span><span class="chip-bracket" aria-hidden="true">]</span></span>
-              {:else}
-                {@const editState = editStateForPart(i)}
-                <span
-                  class="token-pine"
-                  class:edited={editState?.status === "saved"}
-                  class:saving={editState?.status === "pending"}
-                  class:save-error={editState?.status === "error"}
-                  data-part-idx={i}
-                  role="button"
-                  tabindex="0"
-                  onclick={(e) => startEdit(i, e)}
-                  onkeydown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      startEdit(i, e);
-                    }
-                  }}
-                  onmouseenter={(e) => showInfoPine(i, e)}
-                  onmouseleave={hideInfo}
-                  onfocus={(e) => showInfoPine(i, e)}
-                  onblur={hideInfo}
-                >{part.text}</span>
-              {/if}
-            {:else}
-              <span class="token-legacy" data-part-idx={i} title="JDA source token (read-only)">{part.text}</span>
-            {/if}
-          {:else}
-            <span class="prose-run" data-part-idx={item.partIdx} data-line-start={item.lineStart}>{item.text}</span>
-          {/if}
-        {/each}
-      </p>
-    {/each}
-  {/snippet}
+  <!-- ── Floating chip editor ─────────────────────────────────
+       Clicking a Pine chip in the editor opens this; editing the full
+       @[…] token commits through the suggestion / CreateVar-learn paths. -->
+  {#if editingChip}
+    <!-- svelte-ignore a11y_autofocus -->
+    <div class="chip-editor" style="left: {editingChip.x}px; top: {editingChip.y}px;">
+      <input
+        class="chip-editor-input mono"
+        value={editingChip.text}
+        spellcheck="false"
+        autofocus
+        onkeydown={(e) => {
+          if (e.key === "Enter") { e.preventDefault(); commitChipEditor(e.currentTarget.value); }
+          else if (e.key === "Escape") { e.preventDefault(); editingChip = null; }
+        }}
+        onblur={(e) => commitChipEditor(e.currentTarget.value)}
+      />
+    </div>
+  {/if}
 
   <!-- ── Hover info card ─────────────────────────────────── -->
   {#if hoverInfo}
@@ -1933,7 +2492,8 @@
   </footer>
 
   <SettingsDialog bind:open={settingsOpen} onSaved={onSettingsSaved} />
-  <MappingsDialog bind:open={mappingsOpen} />
+  <MappingsDialog bind:open={mappingsOpen} agency={selectedAgency} />
+  <AgenciesDialog bind:open={agenciesOpen} selected={selectedAgency} onchange={onAgenciesChanged} />
   <HelpDialog     bind:open={helpOpen} />
 </div>
 
@@ -2101,6 +2661,31 @@
     background: #5eead4;
     box-shadow: 0 0 6px rgba(94, 234, 212, 0.7);
   }
+  /* Agency picker — matches the toolbar button language (Inter, 12.5px,
+     no uppercase/mono) rather than standing out. */
+  .agency-select {
+    appearance: none;
+    cursor: pointer;
+    padding: 5px 26px 5px 10px;
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    color: #e6e8ef;
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 500;
+    line-height: 1.4;
+    /* Custom caret so the native one doesn't clash with the dark chrome. */
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%239ca3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 9px center;
+  }
+  .agency-select:hover:not(:disabled) { background-color: rgba(255, 255, 255, 0.06); }
+  .agency-select:disabled { opacity: 0.5; cursor: default; }
+  .agency-select option { background: #11121a; color: #e6e8ef; font-family: inherit; }
+  /* Dim the control while it still shows the "Select agency" placeholder. */
+  .agency-select.placeholder { color: #9ca3b8; }
+
   .error-bar {
     background: rgba(248, 113, 113, 0.10);
     color: #f87171;
@@ -2109,6 +2694,15 @@
     font-size: 12.5px;
     font-family: "JetBrains Mono", monospace;
     white-space: pre-wrap;
+  }
+  .learned-bar {
+    background: rgba(94, 234, 212, 0.10);
+    color: #5eead4;
+    border-bottom: 1px solid rgba(94, 234, 212, 0.30);
+    padding: 8px 24px;
+    font-size: 12.5px;
+    font-family: "JetBrains Mono", monospace;
+    cursor: pointer;
   }
 
   /* Restore-prior-work prompt. Same vertical rhythm as the error bar
@@ -2312,6 +2906,92 @@
     widows: 2;
   }
   .prose p:last-child { margin-bottom: 0; }
+  /* Free-text prose runs are editable — clicking gives a native caret.
+   * Keep them visually flush with the document; the caret is the only
+   * affordance, with a faint highlight while focused so the mapper sees
+   * where typing will land. */
+  .prose-run {
+    outline: none;
+    caret-color: #0a1f1d;
+    border-radius: 2px;
+  }
+  .prose-run:focus {
+    background: rgba(94, 234, 212, 0.10);
+  }
+  /* A blank line is an empty editable span stretched across the row so the
+     whole line is a click target — click it to drop a caret and type. */
+  .blank-line {
+    display: block;
+    min-height: 1.08em;
+    width: 100%;
+  }
+  /* The converted pane is a single contenteditable surface. pre-wrap keeps
+     the document's newlines as line breaks; the caret/selection are native
+     so editing behaves like a normal text editor. */
+  .pine-editor {
+    outline: none;
+    caret-color: #0a1f1d;
+  }
+  /* The editor's paragraphs and chips are created imperatively (in JS), so
+     they don't carry Svelte's component scope — their styles must be
+     :global. Scoped under .pine-editor so nothing leaks to the legacy pane. */
+  :global(.pine-editor p) {
+    margin: 0 0 8pt 0;
+    white-space: pre-wrap;
+    min-height: 1.08em;
+    orphans: 2;
+    widows: 2;
+  }
+  :global(.pine-editor p:last-child) { margin-bottom: 0; }
+  :global(.pine-editor .token-pine),
+  :global(.pine-editor .token-legacy) {
+    font-family: "JetBrains Mono", "SF Mono", monospace;
+    font-size: 0.92em;
+    font-weight: 600;
+    border-radius: 2px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  :global(.pine-editor .token-pine) {
+    color: #0f766e;
+    background: rgba(94, 234, 212, 0.28);
+    cursor: pointer;
+  }
+  :global(.pine-editor .token-pine:hover) {
+    background: rgba(94, 234, 212, 0.42);
+    color: #115e59;
+  }
+  :global(.pine-editor .token-legacy) {
+    color: #9a3412;
+    background: rgba(251, 146, 60, 0.20);
+  }
+  :global(.pine-editor .token-pine.edited) {
+    color: #92400e;
+    background: rgba(251, 191, 36, 0.32);
+  }
+  :global(.pine-editor .token-pine.saving) {
+    color: #b08512;
+    background: rgba(252, 211, 77, 0.24);
+  }
+  :global(.pine-editor .token-pine.save-error) {
+    color: #b91c1c;
+    background: rgba(248, 113, 113, 0.24);
+  }
+  .chip-editor {
+    position: fixed;
+    z-index: 90;
+  }
+  .chip-editor-input {
+    min-width: 240px;
+    padding: 6px 9px;
+    border-radius: 6px;
+    background: #11121a;
+    border: 1px solid #5eead4;
+    color: #5eead4;
+    font-size: 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+    outline: none;
+  }
   /* Cyan-tinted selection on the paper — matches the app accent and
    * reads cleanly against the warm white background. */
   .prose ::selection {

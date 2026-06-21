@@ -4,18 +4,18 @@
 # Two roles:
 #   1. Documentation of OBA-specific Pine conventions (defaults that
 #      differ from the criminal/PD context).
-#   2. Stand-in vocabulary allow-list until the live org-variable API
+#   2. Stand-in vocabulary allow-list until the live agency-variable API
 #      lands. The validator (Phase 4) reads `vocabulary` from this
 #      file when the API is unavailable.
 
-[org]
+[agency]
 id          = "oba"
 description = "Oklahoma Bar Association disciplinary templates"
 notes       = "Sections 31–34 of pine_syntax_ground_truth.txt; OBA letter / hearing forms."
 
 
 # ─── conventions (§31, §33) ───────────────────────────────────────────────
-[org.conventions]
+[agency.conventions]
 # OBA combined-name display uses (F L), not (F M L) like criminal/PD.
 combined_name_format = "FormatName(F L).SetCasing(Title)"
 last_name_only_format = "FormatName(L).SetCasing(Title)"
@@ -37,7 +37,7 @@ gender_record_pattern = "<Entity>Info"
 # an explicit CreateVar. They behave like Respondent / Complainant —
 # accessed directly with .first.<field>.
 
-[org.pre_bound_collections]
+[agency.pre_bound_collections]
 RespondentAtty = "respondent's attorney (CaseAssignment, type CIT12)"
 OBAAttorney = "OBA prosecuting attorney (CaseAssignment, type CIT14)"
 Defense = "respondent's attorney in OBA disciplinary context"
@@ -70,9 +70,9 @@ ComplainantInfo = "Name record for the complainant (gender / prefix)"
 # In OBA context, ANY %[Subdocument(Template\\*)] expands to the same
 # pair of numeric IDs. The transform `subdocument_path_to_pine_ids`
 # already encodes this; the table is here for documentation and to
-# make the org-aware behavior visible.
+# make the agency-aware behavior visible.
 
-[org.subdoc_template_family]
+[agency.subdoc_template_family]
 path_prefix = "Template\\"
 output_ids = [5, 3]
 notes = "Any path under Template\\* in OBA produces SubDocument(5) then SubDocument(3) in source order."
@@ -84,10 +84,10 @@ notes = "Any path under Template\\* in OBA produces SubDocument(5) then SubDocum
 # surface it for review. Compiled from sections 26, 31–34, and the
 # verified-pair corpus.
 #
-# Until the live org-variable API exists, this list is the
+# Until the live agency-variable API exists, this list is the
 # vocabulary stand-in — see ../README.md §4.2.
 
-[org.vocabulary]
+[agency.vocabulary]
 entities = [
   # Involvement
   "Respondent",
@@ -172,13 +172,13 @@ prompt_variables = [
 # the runtime lookup tables transforms.py and prelude.py consume.
 #
 # Pine's data model is universal (CaseInvolvement, CaseAssignment,
-# NameAddress, etc.). What varies per org is:
+# NameAddress, etc.). What varies per agency is:
 #
-#   - The Pine name an org exposes a role under (OBA "Respondent" vs
+#   - The Pine name an agency exposes a role under (OBA "Respondent" vs
 #     criminal-defense "Defendant")
-#   - The ``Type`` code the org uses inside GetByQuery filters
+#   - The ``Type`` code the agency uses inside GetByQuery filters
 #   - Which JDA prefixes in source templates map to which role
-#   - Whether the org's variable-screen pre-declares the variable
+#   - Whether the agency's variable-screen pre-declares the variable
 #     (no inline CreateVar needed) or not
 #
 # The ``pre_declared`` flag is the deployment-config knob the
@@ -192,19 +192,19 @@ prompt_variables = [
 # Involvement roles (sourced from CaseInvolvement)
 # ─────────────────────────────────────────────────────────────────────────────
 
-[org.involvement_roles.respondent]
+[agency.involvement_roles.respondent]
 pine_name = "Respondent"
 type_code = "CIT10"
 jda_aliases = ["JW_Respondent", "Respondent", "JW_Defendant", "Cust_Defendant", "kf_Defendant"]
 pre_declared = false
 
-[org.involvement_roles.complainant]
+[agency.involvement_roles.complainant]
 pine_name = "Complainant"
 type_code = "CIT01"
 jda_aliases = ["Cust_Complainant", "JW_Complainant", "Complainant", "JW_VicWitOff", "KF_VicWitOff", "kf_VicWitOff", "KF_Petitioner"]
 pre_declared = false
 
-[org.involvement_roles.filing_complainant]
+[agency.involvement_roles.filing_complainant]
 pine_name = "FilingComplainant"
 type_code = ""  # not yet observed in CreateVar form in corpus
 jda_aliases = ["JW_FilingComplainant"]
@@ -214,37 +214,37 @@ pre_declared = false
 # Assignment roles (sourced from CaseAssignment)
 # ─────────────────────────────────────────────────────────────────────────────
 
-[org.assignment_roles.oba_attorney]
+[agency.assignment_roles.oba_attorney]
 pine_name = "OBAAttorney"
 type_code = "CIT14"
 jda_aliases = ["Cust_OBAAttorney"]
 pre_declared = false
 
-[org.assignment_roles.respondent_attorney]
+[agency.assignment_roles.respondent_attorney]
 pine_name = "RespondentAtty"
 type_code = "CIT12"
 jda_aliases = ["Cust_RespondentAtty"]
 pre_declared = false
 
-[org.assignment_roles.investigator]
+[agency.assignment_roles.investigator]
 pine_name = "Investigator"
 type_code = "CIT13"
 jda_aliases = ["Cust_Investigator", "JW_Atty_Inv_Active", "JW_Investigator", "KF_Investigator"]
 pre_declared = false
 
-[org.assignment_roles.intake_prosecutor]
+[agency.assignment_roles.intake_prosecutor]
 pine_name = "IntakeProsecutor"
 type_code = ""  # not observed; placeholder
 jda_aliases = ["Cust_IntakeProsecutor"]
 pre_declared = false
 
-[org.assignment_roles.defense]
+[agency.assignment_roles.defense]
 pine_name = "Defense"
 type_code = "DA"
 jda_aliases = ["Cust_Defense", "JW_Defense", "Cust_Atty_Def_Active", "JW_Atty_Def_Active", "KF_Atty_Def_Active", "KF_DefAtty", "Cust_DefAtty"]
 pre_declared = false
 
-[org.assignment_roles.prosecutor]
+[agency.assignment_roles.prosecutor]
 pine_name = "Prosecutor"
 type_code = "PROS"
 jda_aliases = ["JW_Atty_Pros_Active", "KF_Atty_Pros_Active", "kf_Atty_Pros_Active", "KF_Atty_Pros_Inactive", "Cust_Atty_Pros_Active", "Cust_Prosecutor", "JW_Prosecutor"]
@@ -256,7 +256,7 @@ pre_declared = false
 # unless the variable screen pre-declares them (pre_declared = false).
 # ─────────────────────────────────────────────────────────────────────────────
 
-[org.child_entities.respondent_address]
+[agency.child_entities.respondent_address]
 pine_name = "RespondentAddress"
 parent_pine_name = "Respondent"
 suffix = "Address"
@@ -264,7 +264,7 @@ source_table = "NameAddress"
 jda_aliases = ["JW_Respondent_RosterAddress", "JW_Respondent_Address", "JW_Defendant_Address"]
 pre_declared = false
 
-[org.child_entities.complainant_address]
+[agency.child_entities.complainant_address]
 pine_name = "ComplainantAddress"
 parent_pine_name = "Complainant"
 suffix = "Address"
@@ -272,7 +272,7 @@ source_table = "NameAddress"
 jda_aliases = ["Cust_Complainant_MailAddress", "Cust_Complainant_Address", "JW_Complainant_RosterAddress", "JW_VicWitOff_Address", "kf_VicWitOff_Address"]
 pre_declared = false
 
-[org.child_entities.respondent_atty_address]
+[agency.child_entities.respondent_atty_address]
 pine_name = "RespondentAttyAddress"
 parent_pine_name = "RespondentAtty"
 suffix = "Address"
@@ -280,7 +280,7 @@ source_table = "PersonnelAddress"
 jda_aliases = ["Cust_RespondentAtty_RosterAddress"]
 pre_declared = false
 
-[org.child_entities.defense_address]
+[agency.child_entities.defense_address]
 pine_name = "DefenseAddress"
 parent_pine_name = "Defense"
 suffix = "Address"
@@ -288,7 +288,7 @@ source_table = "PersonnelAddress"
 jda_aliases = ["KF_DefAtty_RosterAddress", "JW_Atty_Def_Active_Address", "Cust_Atty_Def_Active_Address", "KF_Atty_Def_Active_Address"]
 pre_declared = false
 
-[org.child_entities.prosecutor_address]
+[agency.child_entities.prosecutor_address]
 pine_name = "ProsecutorAddress"
 parent_pine_name = "Prosecutor"
 suffix = "Address"
@@ -296,7 +296,7 @@ source_table = "PersonnelAddress"
 jda_aliases = ["JW_Atty_Pros_Active_Address", "Cust_Atty_Pros_Active_Address"]
 pre_declared = false
 
-[org.child_entities.investigator_address]
+[agency.child_entities.investigator_address]
 pine_name = "InvestigatorAddress"
 parent_pine_name = "Investigator"
 suffix = "Address"

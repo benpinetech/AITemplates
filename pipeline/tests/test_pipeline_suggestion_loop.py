@@ -19,7 +19,7 @@ import pytest
 from pipeline import pipeline
 from pipeline.engine import suggestion_store
 from pipeline.engine.llm_converter import LlmConverter, MockLlmClient
-from pipeline.grammar.loaders import load_org_overrides
+from pipeline.grammar.loaders import load_agency_overrides
 
 
 @pytest.fixture
@@ -31,7 +31,7 @@ def fresh_suggestions_root(tmp_path):
 
 @pytest.fixture
 def oba():
-    return load_org_overrides("oba")
+    return load_agency_overrides("oba")
 
 
 def test_accept_then_rerun_uses_suggestion(fresh_suggestions_root, oba):
@@ -46,10 +46,10 @@ def test_accept_then_rerun_uses_suggestion(fresh_suggestions_root, oba):
         llm_calls.append(prompt)
         return "@[Mystery.first.Magic]"
     fb = LlmConverter(
-        client=MockLlmClient(responder), library=[], org_overrides=oba,
+        client=MockLlmClient(responder), library=[], agency_overrides=oba,
     )
     result1 = pipeline.convert_template(
-        novel_rtf, org="oba", converter=fb,
+        novel_rtf, agency="oba", converter=fb,
         suggestions_root=fresh_suggestions_root,
     )
     assert len(llm_calls) == 1, "LLM should have been hit once"
@@ -60,13 +60,13 @@ def test_accept_then_rerun_uses_suggestion(fresh_suggestions_root, oba):
     jda_text = llm_seg.source_jda_tokens[0].unparse()
     pine_text = llm_seg.pine_outputs[0].unparse()
     suggestion_store.accept_suggestion(
-        jda_text, pine_text, org="oba", root=fresh_suggestions_root,
+        jda_text, pine_text, agency="oba", root=fresh_suggestions_root,
     )
 
     # ── Second run: suggestion lookup fires deterministically. No LLM call.
     llm_calls.clear()
     result2 = pipeline.convert_template(
-        novel_rtf, org="oba", converter=fb,
+        novel_rtf, agency="oba", converter=fb,
         suggestions_root=fresh_suggestions_root,
     )
     assert llm_calls == [], "LLM must not be called on the re-run"
@@ -86,17 +86,17 @@ def test_reject_doesnt_persist_for_suggestion_matching(
         llm_calls.append(prompt)
         return "@[Mystery.first.Magic]"
     fb = LlmConverter(
-        client=MockLlmClient(responder), library=[], org_overrides=oba,
+        client=MockLlmClient(responder), library=[], agency_overrides=oba,
     )
     result1 = pipeline.convert_template(
-        novel_rtf, org="oba", converter=fb,
+        novel_rtf, agency="oba", converter=fb,
         suggestions_root=fresh_suggestions_root,
     )
     llm_seg = next(s for s in result1.segments if s.provenance == pipeline.PROV_LLM)
     suggestion_store.reject_suggestion(
         llm_seg.source_jda_tokens[0].unparse(),
         llm_seg.pine_outputs[0].unparse(),
-        org="oba",
+        agency="oba",
         reason="wrong field name",
         root=fresh_suggestions_root,
     )
@@ -108,7 +108,7 @@ def test_reject_doesnt_persist_for_suggestion_matching(
     # Re-running still hits the LLM.
     llm_calls.clear()
     pipeline.convert_template(
-        novel_rtf, org="oba", converter=fb,
+        novel_rtf, agency="oba", converter=fb,
         suggestions_root=fresh_suggestions_root,
     )
     assert len(llm_calls) == 1
@@ -127,7 +127,7 @@ def test_pipeline_loads_default_suggestions_root_when_unspecified(
         "%[NovelMagic(JW_X)]", "@[X.first.Magic]", "oba", root=tmp_path,
     )
     result = pipeline.convert_template(
-        "%[NovelMagic(JW_X)]", org="oba",
+        "%[NovelMagic(JW_X)]", agency="oba",
     )
     seg = next(s for s in result.segments if s.source_jda_tokens)
     assert seg.provenance == pipeline.PROV_SUGGESTION

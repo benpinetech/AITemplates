@@ -3,14 +3,14 @@
 Pine has a fixed system-wide enumeration of involvement and assignment
 type codes. This module captures that enum so the LLM prompt and the
 agent's classification logic can refer to it. Codes here are the same
-across deployments; what varies per org is whether a deployment
+across deployments; what varies per agency is whether a deployment
 **renames** a code in its Pine variable screen (e.g. OBA exposes
 ``ASSTDC`` as ``OBAAttorney``).
 
-The enum lives in code rather than the org config because it's not an
-org concern — it's the Pine system's own data model. Per-org overrides
+The enum lives in code rather than the agency config because it's not an
+agency concern — it's the Pine system's own data model. Per-agency overrides
 (renames, JDA aliases, pre-declared flags) go in
-``v2/grammar/org_overrides/<org>.toml``.
+``v2/grammar/agency_overrides/<agency>.toml``.
 
 Source: provided by domain converter. Update when the Pine system
 adds or removes a role code.
@@ -138,7 +138,7 @@ def assignment_by_display() -> Dict[str, RoleSpec]:
 def classify_pine_name(pine_name: str) -> Optional[str]:
     """Return ``"involvement"`` / ``"assignment"`` / None for a Pine
     variable name. Matches against the default display name in the
-    enum — orgs that rename roles need their org config to provide
+    enum — agencies that rename roles need their agency config to provide
     the classification override.
 
     When a name appears in BOTH tables (e.g. ``Council``), prefers

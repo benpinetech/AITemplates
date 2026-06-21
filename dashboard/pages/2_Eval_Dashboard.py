@@ -2,9 +2,6 @@ import sys
 import html
 import json
 import os
-import re
-import signal
-import subprocess
 from collections import Counter
 from pathlib import Path
 
@@ -32,18 +29,7 @@ except ImportError:
 
 st.set_page_config(page_title="Eval Dashboard", layout="wide")
 st.title("Evaluation Dashboard")
-st.caption("v2 chunk-based pipeline — runs and metrics from eval_v2.py.")
-
-# ── handle pending stop request ───────────────────────────────────────────────
-if st.session_state.get("stop_requested") and st.session_state.get("eval_proc_pid"):
-    try:
-        os.kill(st.session_state.eval_proc_pid, signal.SIGTERM)
-    except (ProcessLookupError, OSError):
-        pass
-    st.session_state.pop("stop_requested", None)
-    st.session_state.pop("eval_proc_pid", None)
-    st.session_state.eval_running = False
-    st.warning("Run stopped early. Templates completed before stop are saved in the run history.")
+st.caption("v2 pipeline — eval runs the pipeline in-process (see pipeline/tools/eval_v2.py).")
 
 # ── init renderer once ────────────────────────────────────────────────────────
 if "renderer_checked" not in st.session_state:
@@ -136,7 +122,7 @@ with st.sidebar:
     pine_dir_input   = st.text_input("Pine dir",   value=DEFAULT_PINE_DIR)
     run_label        = st.text_input("Label (optional)", placeholder="e.g. v2 cold")
 
-    v2_org = st.selectbox(
+    v2_agency = st.selectbox(
         "Org context",
         options=["oba", "any"],
         index=0,
@@ -160,7 +146,7 @@ with st.sidebar:
         "Auto-accept LLM suggestions (writes to disk)",
         value=False,
         disabled=not v2_use_llm,
-        help="Persists every LLM-produced (jda, pine) pair into suggestions/verified/<org>/. "
+        help="Persists every LLM-produced (jda, pine) pair into suggestions/verified/<agency>/. "
              "Past testing showed context-blind cached suggestions hurt 181 templates and helped "
              "only 7. Use only when you're prepared to audit and prune the cache.",
     )
@@ -215,53 +201,24 @@ with st.sidebar:
         st.session_state.eval_label              = run_label
         st.session_state.eval_total_templates    = len(selected)
         st.session_state.eval_selected_templates = selected
-        st.session_state.eval_v2_org             = v2_org
+        st.session_state.eval_v2_agency             = v2_agency
         st.session_state.eval_v2_use_llm         = v2_use_llm
         st.session_state.eval_v2_auto_accept     = v2_auto_accept
         st.session_state.eval_v2_reverse         = v2_reverse
 
     if st.session_state.get("eval_running"):
-        if st.button("Stop Run", type="secondary", width="stretch"):
-            st.session_state.stop_requested = True
-            st.rerun()
+        st.caption("Evaluation runs in-process and blocks this page until it finishes.")
 
 # ── live eval log ─────────────────────────────────────────────────────────────
 if st.session_state.get("eval_running"):
+    from pipeline.tools.eval_v2 import run_eval
+
     total_templates = st.session_state.get("eval_total_templates", "?")
     combined_area = st.empty()
+    eval_lines: list[str] = []
 
-    cmd = [
-        sys.executable, "-u",
-        str(AGENT_DIR / "v2" / "tools" / "eval_v2.py"),
-        "--legacy-dir", st.session_state.eval_legacy_dir,
-        "--pine-dir",   st.session_state.eval_pine_dir,
-        "--org",        st.session_state.get("eval_v2_org", "oba"),
-    ]
-    if st.session_state.get("eval_v2_use_llm"):
-        cmd.append("--use-llm")
-    if st.session_state.get("eval_v2_auto_accept"):
-        cmd.append("--auto-accept")
-    if st.session_state.get("eval_v2_reverse"):
-        cmd.append("--reverse")
-    if st.session_state.get("eval_label"):
-        cmd += ["--label", st.session_state.eval_label]
-    if st.session_state.get("eval_selected_templates"):
-        cmd += ["--templates"] + st.session_state.eval_selected_templates
-
-    env = {**os.environ, "PYTHONPATH": str(AGENT_DIR)}
-    proc = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-        cwd=str(AGENT_DIR),
-        env=env,
-    )
-    st.session_state.eval_proc_pid = proc.pid
-
-    def _render(lines: list[str], done: int, total, current: str, status: str):
-        escaped = html.escape("\n".join(lines))
+    def _render(done, total, current: str, status: str):
+        escaped = html.escape("\n".join(eval_lines))
         status_escaped = html.escape(status)
         progress_escaped = html.escape(current)
         combined_area.html(
@@ -280,52 +237,36 @@ if st.session_state.get("eval_running"):
             f'</div>'
         )
 
-    def _is_noise(line: str) -> bool:
-        s = line.strip()
-        return s.startswith(("from ", "import ")) and not s.startswith(("from __", "import __"))
+    # ``run_eval`` calls ``on_template(name)`` just before converting each
+    # template. We use it to drive the live progress panel. ``started`` is
+    # the count of templates whose conversion has begun.
+    started = {"n": 0}
 
-    eval_lines: list[str] = []
-    status_msg = ""
-    current_template = ""
-    completed = 0
-    in_report = False
+    def _on_template(name: str):
+        eval_lines.append(name)
+        _render(started["n"], total_templates, name, "Converting…")
+        started["n"] += 1
 
-    for line in proc.stdout:
-        clean = line.rstrip()
-        if _is_noise(clean):
-            continue
-
-        stripped = clean.strip()
-        is_separator = bool(stripped) and all(c in "=#" for c in stripped)
-
-        if is_separator:
-            in_report = True
-            eval_lines.append(clean)
-        elif in_report:
-            if not stripped:
-                eval_lines.append(clean)
-            elif clean.startswith(" "):
-                eval_lines.append(clean)
-                if "  Recall:" in clean:
-                    completed += 1
-            else:
-                in_report = False
-                status_msg = clean
-        elif clean:
-            status_msg = clean
-            if clean.startswith("Evaluating "):
-                current_template = clean[len("Evaluating "):]
-
-        _render(eval_lines, completed, total_templates, current_template, status_msg)
-
-    proc.wait()
-    st.session_state.eval_running = False
-    st.session_state.pop("eval_proc_pid", None)
-
-    if proc.returncode == 0:
+    _render(0, total_templates, "", "Starting…")
+    try:
+        run_eval(
+            legacy_dir=Path(st.session_state.eval_legacy_dir),
+            pine_dir=Path(st.session_state.eval_pine_dir),
+            agency=st.session_state.get("eval_v2_agency", "oba"),
+            runs_dir=EVAL_RUNS_DIR,
+            label=st.session_state.get("eval_label", ""),
+            use_llm=bool(st.session_state.get("eval_v2_use_llm")),
+            auto_accept=bool(st.session_state.get("eval_v2_auto_accept")),
+            api_key=os.environ.get("OPENAI_API_KEY"),
+            template_filter=set(st.session_state.get("eval_selected_templates") or []) or None,
+            on_template=_on_template,
+            reverse=bool(st.session_state.get("eval_v2_reverse")),
+        )
+        st.session_state.eval_running = False
         st.success("Batch evaluation complete. Scroll down to see results.")
-    else:
-        st.error(f"Evaluation failed (exit code {proc.returncode}).")
+    except Exception as e:  # noqa: BLE001
+        st.session_state.eval_running = False
+        st.error(f"Evaluation failed: {e}")
     st.rerun()
 
 # ── load runs ─────────────────────────────────────────────────────────────────

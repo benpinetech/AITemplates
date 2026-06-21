@@ -22,7 +22,7 @@ The LLM only ever sees:
 
 - bracketed expressions (`%[…]` and `@[…]`) — AST-only
 - the universal Pine role enum (16 involvement + 42 assignment codes)
-- the org's allowed Pine vocabulary
+- the agency's allowed Pine vocabulary
 - a small set of few-shot patterns from the active library
 - optional grammar fragment + audience hint
 
@@ -95,10 +95,10 @@ v2/
 │   ├── matcher.py / rewriter.py / engine.py
 │   ├── transforms.py        (named transforms: entity translation, format presets, …)
 │   ├── holes.py
-│   └── library/             (seed patterns, organised by org)
+│   └── library/             (seed patterns, organised by agency)
 │       ├── common/
 │       └── oba/
-├── grammar/                 ← Phase 3 — universal Pine grammar + org overrides
+├── grammar/                 ← Phase 3 — universal Pine grammar + agency overrides
 │   ├── README.md
 │   ├── pine_grammar.toml
 │   ├── pine_data_model.toml
@@ -106,7 +106,7 @@ v2/
 │   ├── pine_idioms.md
 │   ├── role_enum.py / role_index.py
 │   ├── loaders.py
-│   └── org_overrides/
+│   └── agency_overrides/
 │       └── oba.toml
 ├── engine/                  ← Phase 4 — audience, LLM fallback, prelude, validator, store
 │   ├── README.md
@@ -117,11 +117,13 @@ v2/
 │   └── validator.py
 ├── suggestions/             ← Phase 4 — converter-verified suggestion store on disk
 │   └── README.md
-└── tools/
-    ├── convert.py           (single-template CLI)
-    ├── eval_v2.py           (batch eval against the ground-truth corpus)
-    ├── corpus_round_trip.py (Phase 1 round-trip diagnostic)
-    └── corpus_pipeline.py   (Phase 5 corpus runner with coverage stats)
+└── tools/                   ← backend processes the desktop app spawns
+    ├── convert.py           (per-template conversion → JSON bundle)
+    ├── persist_suggestion.py / manage_suggestions.py (HITL suggestion store)
+    ├── update_prelude.py    (regenerate the CreateVar prelude)
+    ├── list_agencies.py     (enumerate configured agencies for the picker)
+    ├── sidecar.py           (subcommand dispatcher for the packaged binary)
+    └── eval_v2.py           (importable batch-eval used by the Streamlit dashboard)
 ```
 
 ## Read order
@@ -133,7 +135,7 @@ If you're picking up this code fresh:
 3. [`../LLM_CAPABILITY_FINDINGS.md`](../LLM_CAPABILITY_FINDINGS.md) — what was tried on the LLM side and what worked. Read before proposing changes to the prompt or the model.
 4. `parser/README.md` — the AST shapes and parser strategy.
 5. `patterns/README.md` — pattern TOML format + the matcher's match/rewrite model.
-6. `grammar/README.md` — Pine grammar split + the org-override model.
+6. `grammar/README.md` — Pine grammar split + the agency-override model.
 7. `engine/README.md` — the LLM fallback, audience, prelude, suggestion-store details.
 8. `tests/` — every supported construct has a test.
 
@@ -146,11 +148,11 @@ If you're picking up this code fresh:
 ./venv/bin/pytest Agent/v2/tests/
 
 # Convert a single template (writes Pine RTF to stdout or --output).
-./venv/bin/python -m Agent.v2.tools.convert path/to/legacy.rtf --org oba
+./venv/bin/python -m Agent.v2.tools.convert path/to/legacy.rtf --agency oba
 
 # Batch-evaluate against the ground-truth corpus (writes JSON to eval_runs/).
-./venv/bin/python -m Agent.v2.tools.eval_v2 --org oba --label some_label
-./venv/bin/python -m Agent.v2.tools.eval_v2 --org oba --use-llm --label some_label
+./venv/bin/python -m Agent.v2.tools.eval_v2 --agency oba --label some_label
+./venv/bin/python -m Agent.v2.tools.eval_v2 --agency oba --use-llm --label some_label
 
 # Run the desktop converter (PySide6 GUI — the production HITL surface).
 make run:converter   # from repo root
@@ -159,18 +161,18 @@ make run:converter   # from repo root
 The eval tool writes one JSON per run under `Agent/eval_runs/`; the
 Streamlit dashboard (`Agent/gui/`) chart those runs over time.
 
-## Org overrides
+## Agency overrides
 
 All deployment-specific knowledge — JDA→Pine entity aliases,
 audience-classifier filename regexes (when needed), Pine vocabulary,
 pre-declared variable lists, MasterCode mappings — lives in
-`grammar/org_overrides/<org>.toml`. Code paths consume this as data;
+`grammar/agency_overrides/<agency>.toml`. Code paths consume this as data;
 nothing OBA-specific is hardcoded in Python in the production path
 beyond a small number of entity-table entries in
 `patterns/transforms.py` (kept for back-compat with the seed pattern
-library; superseded over time by the org TOML).
+library; superseded over time by the agency TOML).
 
-To add a new org, create a new `<org>.toml` modeled on `oba.toml`.
+To add a new agency, create a new `<agency>.toml` modeled on `oba.toml`.
 No Python code changes should be required.
 
 ## Design ground rules
@@ -182,10 +184,10 @@ quietly break them:
    the LLM isn't called on that token. A "patterns advisory" mode —
    the LLM gets to override a pattern in scope — is deferred work.
 2. **Pine data model is universal.** The role enum in
-   `grammar/role_enum.py` is system-wide. What varies per org is
+   `grammar/role_enum.py` is system-wide. What varies per agency is
    variable naming and whether the deployment pre-declares child
    entities at the variable-screen level.
-3. **Org config is the ONE place** for org-specific knowledge.
+3. **Agency config is the ONE place** for agency-specific knowledge.
 4. **The prelude generator** at `engine/prelude.py` produces self-
    contained Pine output by deriving the necessary `CreateVar`
    declarations from the entities referenced. Defaults to
@@ -213,9 +215,9 @@ Two major arcs since the original phased build-out:
 
 - **Patterns advisory** — let the LLM override a pattern within a
   scope. Workstream #56 in the original plan.
-- **Per-org RAG corpus** — `chroma_db_<org>/` lookup so a non-OBA org
+- **Per-agency RAG corpus** — `chroma_db_<agency>/` lookup so a non-OBA agency
   doesn't see OBA-flavoured Pine reference excerpts.
-- **Auto org-detection** — currently `--org oba` is the only
+- **Auto agency-detection** — currently `--agency oba` is the only
   configured target; inference from JDA prefixes is straightforward
   but unfinished.
 - **Promote a verified suggestion to a real pattern with holes** —
@@ -229,8 +231,8 @@ Two major arcs since the original phased build-out:
 |---|---|
 | **Chunk** | An AST pattern that may span multiple tokens (e.g. an If/Else/EndIf trio). v2's unit of mapping. |
 | **Hole** | A named placeholder in a pattern (e.g. `$entity`) that captures an arbitrary subtree at match time; the rewrite consumes the captured subtree. |
-| **Org context** | Which legal-org's templates we're converting (OBA, criminal/PD, …). Selects which patterns apply and which vocabulary the validator uses. |
-| **Vocabulary / allow-list** | The set of `@[...]` names a target org actually has. The validator rejects any generated Pine that references something not in this set. |
+| **Agency context** | Which legal-agency's templates we're converting (OBA, criminal/PD, …). Selects which patterns apply and which vocabulary the validator uses. |
+| **Vocabulary / allow-list** | The set of `@[...]` names a target agency actually has. The validator rejects any generated Pine that references something not in this set. |
 | **Verified pair** | A `(legacy.rtf, pine.rtf)` pair where the Pine output has been hand-verified. The 285+ pairs in `ground_truth/evaluation_templates/jda_to_pine/` are the gold standard. |
 | **Provenance** | Per-segment tag (`pattern`, `llm-fallback`, `unmatched`, `edit`) telling the GUI where each Pine token came from. |
 | **Scope** | A persisted suggestion's reach: `template` (one filename), `audience` (one classifier output), `global` (every template). |

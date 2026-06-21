@@ -7,7 +7,7 @@ modules that wrap, augment, and constrain it.
 | Module | Role |
 |---|---|
 | `audience.py` | Classify the document audience (complainant / respondent / none) from filename and JDA-token frequency. One classifier consumed by both the LLM prompt and the scoped suggestion-store loader so they always agree. |
-| `llm_fallback.py` | LLM batch-convert for tokens the pattern engine doesn't match. Owns prompt assembly, OpenAI client adapter, structured parsing of the response. Privacy invariant: the prompt contains only AST + org vocabulary + few-shot patterns + role-enum + grammar fragment — never prose. |
+| `llm_fallback.py` | LLM batch-convert for tokens the pattern engine doesn't match. Owns prompt assembly, OpenAI client adapter, structured parsing of the response. Privacy invariant: the prompt contains only AST + agency vocabulary + few-shot patterns + role-enum + grammar fragment — never prose. |
 | `prelude.py` | Generate the `CreateVar` prelude (parent + child entity declarations) from the Pine tokens the pipeline emitted. Keeps converted templates self-contained so they render against any Pine deployment regardless of variable-screen pre-declarations. |
 | `suggestion_store.py` | Verified-suggestion overlay store: persist a converter-reviewed mapping (1:1, 1:N, N:M, or drop) under a scope (template / audience / global). Loaded by the pipeline at conversion time so an accepted suggestion fires deterministically on the next run. |
 | `validator.py` | Lint Pine output against vocabulary, structural balance (If/EndIf, Foreach/EndForEach, …), and regex lint rules. Pure function; runs after conversion. |
@@ -51,7 +51,7 @@ the model sees is assembled from a small, audited set of inputs:
 
 - the unmatched JDA tokens (their `.unparse()` text)
 - the universal Pine role enum (16 involvement + 42 assignment codes)
-- the org's allowed Pine vocabulary
+- the agency's allowed Pine vocabulary
 - a few-shot subset of the active pattern library (Jaccard-ranked)
 - a grammar fragment (when supplied)
 - per-input entity hints + document-audience hint + sibling-entity
@@ -136,7 +136,7 @@ RTF at the document's first `\par` so the output is self-contained.
 
 The classification rules are universal Pine data-model facts —
 involvement entities filter by `NameID`, assignment entities filter
-by `PersonnelID`. The org overrides supply the deployment-specific
+by `PersonnelID`. The agency overrides supply the deployment-specific
 type codes.
 
 ## Scoped suggestion store
@@ -144,11 +144,11 @@ type codes.
 Each verified suggestion is one TOML file on disk under:
 
 ```
-v2/suggestions/verified/<org>/{global | by_template/<name> | by_audience/<name>}/
+v2/suggestions/verified/<agency>/{global | by_template/<name> | by_audience/<name>}/
 ```
 
-`accept_suggestion(jda, pine, org, *, scope=...)` writes a file;
-`load_verified_for_org(org, *, template_name=..., audience=...)`
+`accept_suggestion(jda, pine, agency, *, scope=...)` writes a file;
+`load_verified_for_org(agency, *, template_name=..., audience=...)`
 returns only the patterns whose scope matches the current document
 (`global` always loads; `by_template` only when the filename matches;
 `by_audience` only when the classifier agrees).

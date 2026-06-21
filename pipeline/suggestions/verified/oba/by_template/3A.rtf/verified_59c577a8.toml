@@ -1,0 +1,11 @@
+[[pattern]]
+id          = 'verified_59c577a8'
+description = 'verified drop pattern (consumes JDA, emits no Pine)'
+provenance  = "llm-generated"
+verification = "verified"
+notes       = 'accepted 2026-06-19T14:30:06; agency=oba; scope=template; scope_value=3A.rtf; source=3A.rtf; segment_index=0; note=deleted via converter_app (drop, scope=template); removed 1 other occurrence; shape=1→0'
+agency_context = 'oba'
+priority    = 500
+
+match   = '%[Cust_Complainant.FullName]'
+rewrite = []

@@ -14,7 +14,7 @@ become an issue when JDA / Pine tokens contain quotes, brackets, or
 backslashes. Schema::
 
     {
-      "org":            "oba",
+      "agency":            "oba",
       "scope":          {"kind": "template", "value": "Letter to C.rtf"},
       "jda_tokens":     ["%[Cust_Name]"],
       "pine_tokens":    ["@[Complainant.first.NameFirst]", " ", "@[Complainant.first.NameLast]"],
@@ -63,7 +63,7 @@ def main(argv=None) -> int:
         return 1
 
     try:
-        org = payload["org"]
+        agency = payload["agency"]
         jda_tokens = payload["jda_tokens"]
         pine_tokens = payload["pine_tokens"]
         scope = _parse_scope(payload.get("scope"))
@@ -73,10 +73,10 @@ def main(argv=None) -> int:
 
     try:
         removed = suggestion_store.prune_conflicting_in_scope(
-            jda_tokens, pine_tokens, org, scope=scope,
+            jda_tokens, pine_tokens, agency, scope=scope,
         )
         path = suggestion_store.accept_suggestion(
-            jda_tokens, pine_tokens, org,
+            jda_tokens, pine_tokens, agency,
             scope=scope,
             source_template=payload.get("source_template"),
             source_segment_index=payload.get("segment_index"),

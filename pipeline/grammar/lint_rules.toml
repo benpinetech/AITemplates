@@ -80,7 +80,7 @@ id          = "no_defendant_in_oba_context"
 description = "Use @[Respondent.*] in OBA templates; @[Defendant.*] is the criminal/PD form"
 match_regex = "@\\[Defendant\\.first\\.(?:NameFirstName|NameLastName)\\]"
 severity    = "warning"
-fix_hint    = "If the source org is OBA, translate Defendant → Respondent"
+fix_hint    = "If the source agency is OBA, translate Defendant → Respondent"
 notes       = "§35; only fires as warning because criminal/PD templates legitimately use Defendant"
 
 

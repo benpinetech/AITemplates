@@ -2,7 +2,7 @@
 
 This codebase converts legacy **JDA template syntax** (`%[...]`) to
 **Pine template syntax** (`@[...]`) for migrating case-management
-document templates from the JDA platform to Pine CMS. The active org
+document templates from the JDA platform to Pine CMS. The active agency
 is the **Oklahoma Bar Association (OBA)** — disciplinary-case
 templates — but the architecture is designed to generalize to other
 deployments (criminal-defense, public-defender, etc.).
@@ -17,9 +17,18 @@ deployments (criminal-defense, public-defender, etc.).
 | run the eval, dashboard, or convert a single file | "Running things" below |
 | see the v1 vs v2 split and which one ships | "Two pipelines" below |
 | understand Pine's data model (roles, MasterCode, CreateVar) | [`v2/grammar/role_enum.py`](./v2/grammar/role_enum.py) + `PROJECT_STATUS.md` |
-| add a new org | [`v2/grammar/org_overrides/oba.toml`](./v2/grammar/org_overrides/oba.toml) as the template |
+| add a new agency | [`v2/grammar/agency_overrides/oba.toml`](./v2/grammar/agency_overrides/oba.toml) as the template |
 
 ## Two pipelines
+
+> **Stale-doc note (2026-06):** the deterministic pattern matcher was
+> removed in commit `6f15cac`. Conversion is now **LLM generation + the
+> HITL verified-suggestion cache** on top of the structural parser; the
+> authored `patterns/library/` is empty. The "Two pipelines" split and
+> the "best F1" / patterns-only numbers below predate that change and no
+> longer reflect the running pipeline. The production code lives in
+> `pipeline/` (not `v2/`), the dashboard in `dashboard/` (not `gui/`),
+> and tools run as `pipeline.tools.*`.
 
 The repo has **v1** (the original LangGraph + GPT-5-mini agent in
 `src/`) and **v2** (the chunk-pattern engine + LLM fallback in `v2/`).
@@ -31,9 +40,9 @@ v2/                         v2 production pipeline
   parser/                   JDA + Pine AST parsers, RTF extractor, branch swap
   patterns/                 pattern engine, OBA pattern library, transforms
   engine/                   audience, LlmFallback, prelude, validator, suggestion_store
-  grammar/                  org configs, lint rules, role enum, vocabulary
+  grammar/                  agency configs, lint rules, role enum, vocabulary
   suggestions/              converter-verified suggestion store on disk (HITL closed loop)
-  tools/                    eval_v2.py, convert.py, corpus_pipeline.py, corpus_round_trip.py
+  tools/                    GUI backend processes (convert, suggestions, prelude, list_agencies, sidecar) + eval_v2 (dashboard eval lib)
   tests/                    ~400 tests, all passing
 converter_app/              Electron + Svelte desktop GUI — production HITL surface
   electron/                 main.cjs (BrowserWindow + IPC + Python spawn), preload.cjs
@@ -53,24 +62,22 @@ features (editing, scoped persistence, themes) belong in
 
 All commands run from `/home/Chase/Repos/AITemplates/`.
 
+The standalone conversion/eval **CLIs were removed** — conversion now runs
+only through the desktop app. `pipeline/tools/*` are backend processes the
+app spawns (JSON in / JSON out), not human commands. Batch eval is no
+longer a CLI either: the Streamlit dashboard imports `eval_v2.run_eval`
+and runs it in-process.
+
 ```bash
-# Desktop converter (production HITL surface).
+# Desktop converter (production HITL surface) — the way to run conversions.
 make run:converter
 
-# v2 batch eval (default org=oba, patterns-only = fast deterministic ~9s)
-./venv/bin/python -m Agent.v2.tools.eval_v2 --org oba --label some_label
+# Streamlit dashboard (dev tooling — eval runs + charts, in-process).
+make run:dashboard
 
-# v2 batch eval with LLM (~22 min for the full OBA corpus)
-./venv/bin/python -m Agent.v2.tools.eval_v2 --org oba --use-llm --label some_label
-
-# Single-template conversion (writes Pine RTF to disk)
-./venv/bin/python -m Agent.v2.tools.convert path/to/file.rtf --org oba -o /tmp/out.rtf
-
-# Streamlit dashboard (dev tooling — eval charts, API tester)
-./venv/bin/python -m streamlit run Agent/gui/Home.py
-
-# Full test suite (~2s, ~400 tests)
-./venv/bin/pytest Agent/v2/tests -q
+# Full test suite (pytest is NOT in requirements — install once)
+venv/bin/python -m pip install pytest
+venv/bin/python -m pytest pipeline/tests -q
 ```
 
 LLM keys are loaded from the repo-root `.env` (`OPENAI_API_KEY`). The
@@ -89,11 +96,11 @@ empirical findings (see `LLM_CAPABILITY_FINDINGS.md`):
    would change that.
 2. **The Pine data model is universal across deployments.** The role
    enum in `v2/grammar/role_enum.py` is system-wide. What varies per
-   org is variable naming and whether the variable screen pre-declares
+   agency is variable naming and whether the variable screen pre-declares
    child entities.
-3. **Org config (`v2/grammar/org_overrides/<org>.toml`) is the ONE
-   place** to encode org-specific knowledge. Adding a new org should
-   be a config-only change. Any new `if org == "..."` branch in
+3. **Agency config (`v2/grammar/agency_overrides/<agency>.toml`) is the ONE
+   place** to encode agency-specific knowledge. Adding a new agency should
+   be a config-only change. Any new `if agency == "..."` branch in
    Python is a step backwards.
 4. **The CreateVar prelude generator** at `v2/engine/prelude.py`
    produces self-contained Pine output by deriving the necessary
@@ -133,7 +140,7 @@ quality over time as accepted suggestions accumulate.
   popup defaults to `template` if a filename is set, else `audience`
   if classified, else `global`. Global is the documented context-
   blind cache hazard — use sparingly.
-- **Use the org config, not code, to add labels and aliases.**
+- **Use the agency config, not code, to add labels and aliases.**
 - **The user-facing converter is `converter_app/`, not `gui/`.**
   Streamlit is for dev/debug. Adding HITL features there is a wrong
   target.

@@ -35,7 +35,7 @@ from rtf_render import init_renderer, render_rtf, highlight_legacy, highlight_pi
 from pipeline import pipeline
 from pipeline.engine import suggestion_store
 from pipeline.engine.llm_fallback import LlmFallback, OpenAILlmClient
-from pipeline.grammar.loaders import load_org_overrides
+from pipeline.grammar.loaders import load_agency_overrides
 from pipeline.parser import pine_parser
 from pipeline.patterns import loader as pattern_loader
 
@@ -157,7 +157,7 @@ def _load_library():
 # ── sidebar ──────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.header("v2 conversion")
-    st.caption("Upload a JDA RTF or paste text below, pick an org, run.")
+    st.caption("Upload a JDA RTF or paste text below, pick an agency, run.")
 
     uploaded = st.file_uploader("JDA RTF", type=["rtf"])
     pasted = st.text_area(
@@ -170,7 +170,7 @@ with st.sidebar:
         ),
     )
 
-    org = st.selectbox(
+    agency = st.selectbox(
         "Org context",
         options=["oba", "any"],
         index=0,
@@ -255,7 +255,7 @@ if run_btn:
         st.stop()
 
     library = _load_library()
-    org_overrides = load_org_overrides(org) if org != "any" else None
+    agency_overrides = load_agency_overrides(agency) if agency != "any" else None
 
     fb = None
     if use_llm and has_openai_key:
@@ -266,7 +266,7 @@ if run_btn:
             fb = LlmFallback(
                 client=OpenAILlmClient(model=selected_model or None),
                 library=library,
-                org_overrides=org_overrides,
+                agency_overrides=agency_overrides,
             )
         except RuntimeError as e:
             st.error(f"LLM client failed to start: {e}")
@@ -275,9 +275,9 @@ if run_btn:
     template_name = st.session_state.get("v2_source_name")
     with st.spinner("Converting…"):
         result = pipeline.convert_template(
-            source, org=org,
+            source, agency=agency,
             library=library,
-            org_overrides=org_overrides,
+            agency_overrides=agency_overrides,
             llm_fallback=fb,
             template_name=template_name if template_name and template_name != "<pasted>" else None,
         )
@@ -343,7 +343,7 @@ else:
         + " · ".join(summary_bits)
     )
 
-    org_for_save = result.org
+    agency_for_save = result.agency
     edits = st.session_state.setdefault("v2_edits", {})
 
     for i, seg in enumerate(result.segments):
@@ -490,7 +490,7 @@ else:
                         try:
                             suggestion_store.accept_suggestion(
                                 jda_list, pine_list,
-                                org=org_for_save,
+                                agency=agency_for_save,
                                 scope=scope,
                                 source_template=template_name,
                                 source_segment_index=i,

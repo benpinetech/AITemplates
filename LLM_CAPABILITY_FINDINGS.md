@@ -289,7 +289,7 @@ discussion in light of this data:
 **Macro F1 in production: ~0.53 (cold), grows with HITL accumulation.**
 
 - The pattern engine (~1500 lines) becomes dead code.
-- A new template / new org starts at the LLM ceiling and gets better
+- A new template / new agency starts at the LLM ceiling and gets better
   over time as the converter accepts/edits suggestions.
 - F1 drops ~0.14 vs hybrid, day-one.
 - Most generalizable: the LLM is content-agnostic; whatever the JDA
@@ -304,11 +304,11 @@ discussion in light of this data:
 - Pattern engine stays as content-agnostic infrastructure.
 - The OBA-specific hardcodes (translation rules, audience regexes,
   drop list, type codes, entity table) move from Python into
-  `org_overrides/oba.toml`.
-- New orgs are a TOML file under `org_overrides/`, no Python edit.
+  `agency_overrides/oba.toml`.
+- New agencies are a TOML file under `agency_overrides/`, no Python edit.
 - A `fake_org.toml` end-to-end test acts as a tripwire — fails if
   someone reintroduces an OBA hardcode.
-- HITL persistence-as-patterns (already built) is how new orgs grow
+- HITL persistence-as-patterns (already built) is how new agencies grow
   beyond the default config.
 - Best fit if maintaining the current F1 quality matters and the
   successor is a non-developer operator who edits TOMLs but not
@@ -321,7 +321,7 @@ discussion in light of this data:
 - Don't refactor; trust the patterns to keep working on OBA.
 - Use the HITL workflow's scoped suggestions to fix individual
   templates as they come up.
-- New orgs require a developer to hand-author a new pattern library
+- New agencies require a developer to hand-author a new pattern library
   or accept the patterns-OFF F1 (~0.53) until enough HITL edits
   accumulate.
 

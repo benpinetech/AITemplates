@@ -17,7 +17,7 @@ README covers the on-disk layout.
 ```
 suggestions/
 ├── verified/
-│   └── <org>/
+│   └── <agency>/
 │       ├── global/
 │       │   └── verified_<hash>.toml          ← always re-applies
 │       ├── by_template/
@@ -83,7 +83,7 @@ wins). The store assigns:
 `reject_suggestion` appends a JSON record to `rejected.log`:
 
 ```json
-{"timestamp": "...", "org": "oba", "jda": "%[...]", "pine": "@[...]",
+{"timestamp": "...", "agency": "oba", "jda": "%[...]", "pine": "@[...]",
  "reason": "", "source_template": "...", "source_segment_index": 4}
 ```
 
@@ -100,6 +100,6 @@ has explicitly persisted.
 ## Migrating
 
 Pre-scope files (a flat layout from earlier versions where
-`verified/<org>/verified_<hash>.toml` had no scope subdir) still
+`verified/<agency>/verified_<hash>.toml` had no scope subdir) still
 load. The loader treats them as `global`-scope. Migration is silent;
 no action required.

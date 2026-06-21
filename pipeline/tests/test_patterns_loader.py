@@ -129,13 +129,13 @@ class TestPatternsForOrg:
     def test_filters_and_priority_order(self):
         from pipeline.patterns.schema import Pattern
         a = Pattern(id="a", description="", match="%[A]", rewrite="@[A]",
-                   org_context="any", priority=50)
+                   agency_context="any", priority=50)
         b = Pattern(id="b", description="", match="%[B]", rewrite="@[B]",
-                   org_context="oba", priority=200)
+                   agency_context="oba", priority=200)
         c = Pattern(id="c", description="", match="%[C]", rewrite="@[C]",
-                   org_context="criminal-pd", priority=100)
+                   agency_context="criminal-pd", priority=100)
 
-        out = loader.patterns_for_org([a, b, c], "oba")
+        out = loader.patterns_for_agency([a, b, c], "oba")
         assert [p.id for p in out] == ["b", "a"]   # b first (priority 200), then a (any/50)
 
 

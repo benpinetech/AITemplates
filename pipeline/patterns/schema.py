@@ -6,7 +6,7 @@ A pattern file looks like::
     id = "..."
     description = "..."
     provenance = "hand-written"
-    org_context = "oba"
+    agency_context = "oba"
     match = "%[TitleCase($entity.FullName)]"
     rewrite = "@[$entity_pine.first.FormatName(F L).SetCasing(Title)]"
 
@@ -83,7 +83,7 @@ class Pattern(BaseModel):
     provenance: Provenance = "hand-written"
     verification: Verification = "verified"
     notes: str = ""
-    org_context: str = "any"
+    agency_context: str = "any"
     priority: int = 100
 
     # match: single string (one token) or list (chunk).

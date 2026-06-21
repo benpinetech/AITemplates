@@ -15,7 +15,7 @@ import pytest
 
 from pipeline import pipeline
 from pipeline.engine.llm_converter import LlmConverter, MockLlmClient
-from pipeline.grammar.loaders import load_org_overrides
+from pipeline.grammar.loaders import load_agency_overrides
 from pipeline.parser import pine_parser
 @pytest.fixture(scope="module")
 def library():
@@ -27,7 +27,7 @@ def library():
 class TestSingleToken:
     def test_unmatched_token_left_in_place(self, library):
         rtf = "Mystery: %[Mystery(thing)] tail."
-        result = pipeline.convert_template(rtf, org="any", library=library)
+        result = pipeline.convert_template(rtf, agency="any", library=library)
         # Unmatched segments aren't replaced — the JDA token stays
         # for the mapper to see.
         assert "%[Mystery(thing)]" in result.converted_rtf
@@ -38,23 +38,23 @@ class TestSingleToken:
 
 class TestLlmConverter:
     def test_fallback_runs_on_unmatched(self, library):
-        oba = load_org_overrides("oba")
+        oba = load_agency_overrides("oba")
         client = MockLlmClient(lambda prompt: "@[Respondent.first.NameLastName]")
-        fb = LlmConverter(client=client, library=library, org_overrides=oba)
+        fb = LlmConverter(client=client, library=library, agency_overrides=oba)
         rtf = "X: %[Mystery(thing)]"
         result = pipeline.convert_template(
-            rtf, org="oba", library=library, converter=fb,
+            rtf, agency="oba", library=library, converter=fb,
         )
         assert "@[Respondent.first.NameLastName]" in result.converted_rtf
         assert result.segments[0].provenance == pipeline.PROV_LLM
 
     def test_fallback_failure_leaves_unmatched(self, library):
-        oba = load_org_overrides("oba")
+        oba = load_agency_overrides("oba")
         client = MockLlmClient(lambda prompt: "Sorry I can't.")
-        fb = LlmConverter(client=client, library=library, org_overrides=oba)
+        fb = LlmConverter(client=client, library=library, agency_overrides=oba)
         rtf = "X: %[Mystery(thing)]"
         result = pipeline.convert_template(
-            rtf, org="oba", library=library, converter=fb,
+            rtf, agency="oba", library=library, converter=fb,
         )
         # LLM failed → segment stays unmatched, JDA token in place.
         assert "%[Mystery(thing)]" in result.converted_rtf
@@ -65,7 +65,7 @@ class TestLlmConverter:
 class TestValidation:
     def test_clean_output_has_no_errors(self, library):
         rtf = "%[TitleCase(JW_Respondent.FullName)]"
-        result = pipeline.convert_template(rtf, org="oba", library=library)
+        result = pipeline.convert_template(rtf, agency="oba", library=library)
         errors = [i for i in result.issues if i.severity == "error"]
         assert errors == []
 
@@ -81,12 +81,12 @@ class TestValidation:
         # a clean input is 0 (handled above) and for a SetCasing-on-
         # ProsNum input is >0.
         # We'll pass an LLM fallback that injects a bad token.
-        oba = load_org_overrides("oba")
+        oba = load_agency_overrides("oba")
         client = MockLlmClient(lambda prompt: "@[ProsNum.first.Number.SetCasing(Upper)]")
-        fb = LlmConverter(client=client, library=library, org_overrides=oba)
+        fb = LlmConverter(client=client, library=library, agency_overrides=oba)
         rtf = "X: %[Mystery(thing)]"
         result = pipeline.convert_template(
-            rtf, org="oba", library=library, converter=fb,
+            rtf, agency="oba", library=library, converter=fb,
         )
         # The LLM produced a token that violates the no_setcasing_on_prosnum
         # lint rule. Validator should surface that.
@@ -97,8 +97,8 @@ class TestValidation:
 # ─── result shape ─────────────────────────────────────────────────────────
 
 class TestResultShape:
-    def test_org_required(self, library):
-        # convert_template requires `org` as a positional parameter.
+    def test_agency_required(self, library):
+        # convert_template requires `agency` as a positional parameter.
         with pytest.raises(TypeError):
             pipeline.convert_template("%[X]")  # type: ignore[call-arg]
 
@@ -108,7 +108,7 @@ class TestResultShape:
 class TestRebuildWithEdits:
     def test_empty_edit_yields_unmatched_like_output(self, library):
         rtf = "Dear %[TitleCase(JW_Respondent.FullName)]:"
-        result = pipeline.convert_template(rtf, org="oba", library=library)
+        result = pipeline.convert_template(rtf, agency="oba", library=library)
         # Rejecting / clearing a segment → empty tuple of pine outputs.
         rebuilt = pipeline.rebuild_result_with_edits(result, {0: ()})
         assert rebuilt.segments[0].provenance == pipeline.PROV_EDIT

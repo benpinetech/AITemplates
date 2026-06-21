@@ -17,14 +17,14 @@ from pipeline.engine.llm_converter import (
     _select_few_shot,
     _similarity,
 )
-from pipeline.grammar.loaders import load_org_overrides
+from pipeline.grammar.loaders import load_agency_overrides
 from pipeline.parser import jda_parser, pine_parser
 from pipeline.patterns.schema import Pattern
 
 
 @pytest.fixture(scope="module")
 def oba():
-    return load_org_overrides("oba")
+    return load_agency_overrides("oba")
 
 
 @pytest.fixture(scope="module")
@@ -61,7 +61,7 @@ class TestPromptAssembly:
     def test_contains_input_section(self, oba):
         req = ConversionRequest(
             jda_token=jda_parser.parse("%[TitleCase(JW_Respondent.FullName)]"),
-            org="oba",
+            agency="oba",
             vocabulary=oba.vocabulary,
         )
         prompt = req.assemble_prompt()
@@ -71,7 +71,7 @@ class TestPromptAssembly:
     def test_contains_vocabulary(self, oba):
         req = ConversionRequest(
             jda_token=jda_parser.parse("%[Mystery]"),
-            org="oba",
+            agency="oba",
             vocabulary=oba.vocabulary,
         )
         prompt = req.assemble_prompt()
@@ -83,7 +83,7 @@ class TestPromptAssembly:
         p = few_shot_patterns[0]
         req = ConversionRequest(
             jda_token=jda_parser.parse("%[TitleCase(JW_Respondent.FullName)]"),
-            org="oba",
+            agency="oba",
             vocabulary=oba.vocabulary,
             few_shot=[p],
         )
@@ -100,7 +100,7 @@ class TestPromptAssembly:
         holed = few_shot_patterns[1]   # the synthetic pattern with $-holes
         req = ConversionRequest(
             jda_token=jda_parser.parse("%[TitleCase(JW_Respondent.FullName)]"),
-            org="oba",
+            agency="oba",
             vocabulary=oba.vocabulary,
             few_shot=[holed],
         )
@@ -114,7 +114,7 @@ class TestPromptAssembly:
     def test_grammar_fragment_appended(self, oba):
         req = ConversionRequest(
             jda_token=jda_parser.parse("%[Mystery]"),
-            org="oba",
+            agency="oba",
             vocabulary=oba.vocabulary,
             grammar_fragment="(date presets: preset1=MMMM d, yyyy ; preset5=MM/dd/yyyy)",
         )
@@ -144,7 +144,7 @@ class TestPrivacyInvariant:
         token = jda_parser.parse("%[TitleCase(JW_Respondent.FullName)]")
         req = ConversionRequest(
             jda_token=token,
-            org="oba",
+            agency="oba",
             vocabulary=oba.vocabulary,
             few_shot=[],   # no patterns
             grammar_fragment="",
@@ -160,7 +160,7 @@ class TestPrivacyInvariant:
         token = jda_parser.parse("%[Initials(Cust_OBAAttorney.FullName, false)]")
         req = ConversionRequest(
             jda_token=token,
-            org="oba",
+            agency="oba",
             vocabulary=oba.vocabulary,
         )
         a = req.assemble_prompt()
@@ -173,7 +173,7 @@ class TestPrivacyInvariant:
         # The universal role enum + vocabulary + few-shot carry the
         # same info more generally. See LLM_CAPABILITY_FINDINGS.md.
         token = jda_parser.parse("%[Cust_Complainant.FullName]")
-        req = ConversionRequest(jda_token=token, org="oba", vocabulary=oba.vocabulary)
+        req = ConversionRequest(jda_token=token, agency="oba", vocabulary=oba.vocabulary)
         prompt = req.assemble_prompt()
         assert "TRANSLATION RULES" not in prompt
         # Role enum still carries the entity vocabulary the rules used to enumerate.
@@ -185,7 +185,7 @@ class TestPrivacyInvariant:
         # entity hints (``ENTITY HINT``) still surface known renames
         # for the specific token being translated.
         token = jda_parser.parse("%[Cust_Complainant_Address.City]")
-        req = ConversionRequest(jda_token=token, org="oba", vocabulary=oba.vocabulary)
+        req = ConversionRequest(jda_token=token, agency="oba", vocabulary=oba.vocabulary)
         prompt = req.assemble_prompt()
         assert "JDA → PINE ENTITY TRANSLATION TABLE" not in prompt
         # The per-input hint still resolves the leading entity.
@@ -197,7 +197,7 @@ class TestPrivacyInvariant:
         # When the input's leading entity is in the table, the prompt
         # adds a per-call hint pointing the LLM at the right Pine entity.
         token = jda_parser.parse("%[Cust_RespondentAtty.LastName]")
-        req = ConversionRequest(jda_token=token, org="oba", vocabulary=oba.vocabulary)
+        req = ConversionRequest(jda_token=token, agency="oba", vocabulary=oba.vocabulary)
         prompt = req.assemble_prompt()
         assert "ENTITY HINT" in prompt
         # The hint pairs the JDA name with its Pine target.
@@ -207,7 +207,7 @@ class TestPrivacyInvariant:
 
     def test_prompt_omits_hint_for_unknown_entity(self, oba):
         token = jda_parser.parse("%[MysteryEntity.SomeField]")
-        req = ConversionRequest(jda_token=token, org="oba", vocabulary=oba.vocabulary)
+        req = ConversionRequest(jda_token=token, agency="oba", vocabulary=oba.vocabulary)
         prompt = req.assemble_prompt()
         assert "ENTITY HINT" not in prompt
 
@@ -219,7 +219,7 @@ class TestPrivacyInvariant:
             jda_parser.parse("%[TitleCase(JW_Atty_Pros_Active.FullName)]"),
         ]
         req = BatchConversionRequest(
-            jda_tokens=tuple(toks), org="oba", vocabulary=oba.vocabulary,
+            jda_tokens=tuple(toks), agency="oba", vocabulary=oba.vocabulary,
         )
         prompt = req.assemble_batch_prompt()
         # All three appear in numbered order in the INPUTS section.
@@ -316,7 +316,7 @@ class TestPrivacyInvariant:
         from pipeline.engine.llm_converter import BatchConversionRequest
         toks = [jda_parser.parse("%[Cust_Complainant.FullName]")]
         req = BatchConversionRequest(
-            jda_tokens=tuple(toks), org="oba", vocabulary=oba.vocabulary,
+            jda_tokens=tuple(toks), agency="oba", vocabulary=oba.vocabulary,
             template_name="C Offer PR.rtf",
         )
         prompt = req.assemble_batch_prompt()
@@ -328,7 +328,7 @@ class TestPrivacyInvariant:
         from pipeline.engine.llm_converter import BatchConversionRequest
         toks = [jda_parser.parse("%[SomethingObscure.Field]")]
         req = BatchConversionRequest(
-            jda_tokens=tuple(toks), org="oba", vocabulary=oba.vocabulary,
+            jda_tokens=tuple(toks), agency="oba", vocabulary=oba.vocabulary,
             # No filename and tokens don't classify
         )
         prompt = req.assemble_batch_prompt()
@@ -345,7 +345,7 @@ class TestPrivacyInvariant:
             jda_parser.parse("%[JW_Respondent.FullName]"),
         ]
         req = BatchConversionRequest(
-            jda_tokens=tuple(toks), org="oba", vocabulary=oba.vocabulary,
+            jda_tokens=tuple(toks), agency="oba", vocabulary=oba.vocabulary,
         )
         prompt = req.assemble_batch_prompt()
         assert "DOCUMENT CONTEXT" in prompt
@@ -411,7 +411,7 @@ class TestPrivacyInvariant:
             "2. @[ComplainantAddress.first.City]\n"
         )
         client = MockLlmClient(lambda prompt: canned)
-        fb = LlmConverter(client=client, library=[], org_overrides=oba)
+        fb = LlmConverter(client=client, library=[], agency_overrides=oba)
         toks = [
             jda_parser.parse("%[Cust_Complainant.FullName]"),
             jda_parser.parse("%[Cust_Complainant_Address.City]"),
@@ -428,7 +428,7 @@ class TestPrivacyInvariant:
         from pipeline.engine.llm_converter import LlmConverter, MockLlmClient
         fb = LlmConverter(
             client=MockLlmClient(lambda p: ""),
-            library=[], org_overrides=oba,
+            library=[], agency_overrides=oba,
         )
         assert fb.convert_batch([]) == []
 
@@ -439,12 +439,12 @@ class TestPrivacyInvariant:
         # variable section (FEWSHOT / HINT / INPUT).
         a = ConversionRequest(
             jda_token=jda_parser.parse("%[Cust_Complainant.LastName]"),
-            org="oba",
+            agency="oba",
             vocabulary=oba.vocabulary,
         ).assemble_prompt()
         b = ConversionRequest(
             jda_token=jda_parser.parse("%[JW_Respondent.FullName]"),
-            org="oba",
+            agency="oba",
             vocabulary=oba.vocabulary,
         ).assemble_prompt()
         # Find a marker that's the LAST constant-section header.
@@ -460,7 +460,7 @@ class TestPrivacyInvariant:
         token = jda_parser.parse("%[Subdocument(MysteryPath\\NotInRules)]")
         req = ConversionRequest(
             jda_token=token,
-            org="oba",
+            agency="oba",
             vocabulary=oba.vocabulary,
         )
         prompt = req.assemble_prompt()
@@ -515,18 +515,18 @@ class TestFewShotSelection:
         s2 = _similarity("TitleCase(JW_Respondent.FullName)", "Subdocument(X)")
         assert s1 > s2
 
-    def test_few_shot_filters_by_org(self, library):
-        # When org="criminal-pd", OBA-only patterns must not appear.
+    def test_few_shot_filters_by_agency(self, library):
+        # When agency="criminal-pd", OBA-only patterns must not appear.
         picks = _select_few_shot(
-            library, "%[TitleCase(JW_X.FullName)]", org="criminal-pd", k=10,
+            library, "%[TitleCase(JW_X.FullName)]", agency="criminal-pd", k=10,
         )
         for p in picks:
-            assert p.org_context in ("any", "criminal-pd")
+            assert p.agency_context in ("any", "criminal-pd")
 
     def test_few_shot_excludes_chunk_patterns(self, library):
         # Chunk patterns aren't useful as few-shot for single-token
         # fallback (they're wrong shape).
-        picks = _select_few_shot(library, "%[Mystery]", org="any", k=20)
+        picks = _select_few_shot(library, "%[Mystery]", agency="any", k=20)
         for p in picks:
             assert not p.is_chunk_pattern()
 
@@ -541,19 +541,19 @@ class TestEndToEnd:
             "TitleCase(JW_Respondent.FullName)":
                 "@[Respondent.first.FormatName(F L).SetCasing(Title)]",
         })
-        fb = LlmConverter(client=client, library=library, org_overrides=oba)
+        fb = LlmConverter(client=client, library=library, agency_overrides=oba)
         out = fb.convert(jda_parser.parse("%[TitleCase(JW_Respondent.FullName)]"))
         assert out is not None
         assert out.unparse() == "@[Respondent.first.FormatName(F L).SetCasing(Title)]"
 
     def test_mock_unparseable_response_returns_none(self, library, oba):
         client = MockLlmClient(lambda prompt: "I'm not sure how to convert this.")
-        fb = LlmConverter(client=client, library=library, org_overrides=oba)
+        fb = LlmConverter(client=client, library=library, agency_overrides=oba)
         out = fb.convert(jda_parser.parse("%[Mystery]"))
         assert out is None
 
     def test_build_request_attaches_few_shot(self, few_shot_patterns, oba):
         client = MockLlmClient(lambda prompt: "@[Respondent.first.NameLastName]")
-        fb = LlmConverter(client=client, library=few_shot_patterns, org_overrides=oba)
+        fb = LlmConverter(client=client, library=few_shot_patterns, agency_overrides=oba)
         req = fb.build_request(jda_parser.parse("%[TitleCase(JW_Respondent.FullName)]"))
         assert len(req.few_shot) > 0

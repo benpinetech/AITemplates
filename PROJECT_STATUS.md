@@ -43,8 +43,8 @@ Substantive work since the 2026‑05‑11 snapshot:
 - **Cleanup**: deleted abandoned corpus miner (`engine/miner.py`,
   `tools/mine_patterns.py`, `tests/test_engine_miner.py`); deleted
   the four GUI prototypes (Avalonia, Tauri, Flutter, Electron) after
-  Electron was selected for production; removed the org dropdown
-  from the toolbar (only one org configured); auto-migrated the
+  Electron was selected for production; removed the agency dropdown
+  from the toolbar (only one agency configured); auto-migrated the
   legacy `gpt-4o-mini` default to `gpt-5.5`; removed Presidio +
   spaCy dependencies (only consumer was the failed PresidioScrubbed
   strategy); deleted ~30 MB of experiment artifact directories.
@@ -203,7 +203,7 @@ fillpoints. Uses GPT-5-mini, runs ~3.3 hours for 294 templates.
   walks the JDA AST against TOML pattern definitions.
 - `transforms.py` — value-transforms patterns can call
   (`translate_jda_entity_to_pine`, `format_to_preset`, etc.).
-  Currently consults the org config first, falls back to legacy
+  Currently consults the agency config first, falls back to legacy
   hardcoded tables.
 - `library/common/` and `library/oba/` — TOML pattern files. The OBA
   library has 13 files covering name forms, address forms, IsEmpty
@@ -217,7 +217,7 @@ fillpoints. Uses GPT-5-mini, runs ~3.3 hours for 294 templates.
   (translation rules + universal role enum + entity table + vocab
   + few-shots + document-audience hint).
 - `prelude.py` — derives CreateVar declarations from referenced child
-  entities; topologically sorted; pre-declared filter from org config.
+  entities; topologically sorted; pre-declared filter from agency config.
 - `validator.py` — lint rules over Pine output.
 - `suggestion_store.py` — verified-suggestion cache (auto-accept).
   See "Cache hazard" below.
@@ -229,7 +229,7 @@ fillpoints. Uses GPT-5-mini, runs ~3.3 hours for 294 templates.
   when Pine adds a new type code.
 - `role_index.py` — builds runtime lookup tables from an OrgRoot.
 - `loaders.py` — pydantic models for the grammar TOMLs.
-- `org_overrides/oba.toml` — OBA's org config: role mappings, child
+- `agency_overrides/oba.toml` — OBA's agency config: role mappings, child
   entities, conventions, pre-bound collections, vocabulary, prompt
   variables. Source of truth for OBA-specific labels.
 - `pine_grammar.toml`, `pine_data_model.toml`, `lint_rules.toml` —
@@ -256,7 +256,7 @@ Streamlit multi-page app:
 ## Cache hazard — don't auto-accept LLM suggestions in production
 
 The "auto-accept" feature (writes LLM responses to
-`v2/suggestions/verified/<org>/` as new patterns) **degrades F1**
+`v2/suggestions/verified/<agency>/` as new patterns) **degrades F1**
 because the cached suggestions are context-blind:
 
 > Cached suggestions hurt 181 templates and helped only 7.
@@ -292,23 +292,23 @@ Excluding (1) lifts macro F1 by ~0.014. Buckets (2) and (3) are
 inherent to the corpus / metric, not fixable without changing the
 ground truth or the scoring.
 
-## Generalization story for new orgs
+## Generalization story for new agencies
 
 The architecture is generalizable; the *content* is partially
-OBA-flavored. To add a new org effectively:
+OBA-flavored. To add a new agency effectively:
 
 | layer | what's needed | effort |
 |---|---|---|
-| Role labels and aliases | new `v2/grammar/org_overrides/<org>.toml` | half a day with the right data |
-| RAG corpus | per-org Pine reference doc indexed into a per-org `chroma_db_<org>/` | depends on availability of docs |
+| Role labels and aliases | new `v2/grammar/agency_overrides/<agency>.toml` | half a day with the right data |
+| RAG corpus | per-agency Pine reference doc indexed into a per-agency `chroma_db_<agency>/` | depends on availability of docs |
 | Drop list / prompt variables / date presets | currently in code as OBA-leaning defaults | half a day to move to config |
-| High-frequency patterns | OBA has 13 hand-written pattern files; LLM fallback substitutes for new orgs | optional, incremental |
+| High-frequency patterns | OBA has 13 hand-written pattern files; LLM fallback substitutes for new agencies | optional, incremental |
 
 The universal role enum in the LLM prompt (added W14/W15) means a
-new org gets **competent default translations** out of the box even
-without per-org patterns — the LLM does semantic match against the
-enum. Estimated F1 for a fresh org with only the org config: 0.50–0.60.
-With per-org RAG: 0.60–0.70. With patterns: parity with OBA.
+new agency gets **competent default translations** out of the box even
+without per-agency patterns — the LLM does semantic match against the
+enum. Estimated F1 for a fresh agency with only the agency config: 0.50–0.60.
+With per-agency RAG: 0.60–0.70. With patterns: parity with OBA.
 
 ## Workstream log (this session, 2026-05-06 / 2026-05-11)
 
@@ -326,7 +326,7 @@ With per-org RAG: 0.60–0.70. With patterns: parity with OBA.
 | W9 | relax conservative bias for unknown entities | -0.003 — reverted in W10 |
 | W10 | CreateVar prelude generator + integration | flat on F1 (CV-excluded metric), but production-correct output |
 | W11 | flip eval to **include CreateVars** in token comparison | metric now honest; reveals -0.014 from over-emitted preludes |
-| W12 | consolidate org-specific labels into `oba.toml` | architecture win; F1 flat |
+| W12 | consolidate agency-specific labels into `oba.toml` | architecture win; F1 flat |
 | W13 | flip `pre_declared = false` for OBA → emit prelude always | matches W11 behavior |
 | W14 | universal role enum (16 involvement + 42 assignment codes) added to LLM prompt | helped long-tail templates (Truancy, Process Card, DV Contract); offset by prelude cost |
 | W15 | MasterCode-aware framing for the role enum | F1 essentially flat at 0.662; architecture more correct |
@@ -339,14 +339,14 @@ With per-org RAG: 0.60–0.70. With patterns: parity with OBA.
   better output) could help on templates where the pattern's default
   disagrees with the corpus's stylistic choice (e.g. SetCasing on
   City). Not started.
-- **Per-org RAG support.** The current RAG database is OBA-flavored
-  (`pine_syntax_ground_truth.txt`). For another org, the LLM gets
+- **Per-agency RAG support.** The current RAG database is OBA-flavored
+  (`pine_syntax_ground_truth.txt`). For another agency, the LLM gets
   misleading examples. Fix: `_get_rag_db()` in `llm_fallback.py`
-  could look for `chroma_db_<org>/` and fall back to default.
-- **Move drop list / prompt variables / date presets to org config.**
+  could look for `chroma_db_<agency>/` and fall back to default.
+- **Move drop list / prompt variables / date presets to agency config.**
   Currently hardcoded in `transforms.py`. Generalization gap for new
-  orgs.
-- **Second org config as proof-point.** Even a stub `criminal_defense.toml`
+  agencies.
+- **Second agency config as proof-point.** Even a stub `criminal_defense.toml`
   would validate the consolidation work — no eval needed.
 
 ## Working agreements with the user
@@ -377,7 +377,7 @@ Agent/
 │   ├── parser/                    ← RTF/JDA/Pine parsing + branch swap
 │   ├── patterns/                  ← pattern engine + OBA library + transforms
 │   ├── engine/                    ← LLM fallback, prelude, validator, suggestion store
-│   ├── grammar/                   ← role enum, org configs, lint rules
+│   ├── grammar/                   ← role enum, agency configs, lint rules
 │   ├── tools/                     ← eval_v2, convert
 │   └── tests/                     ← ~400 tests, fast (~2s)
 ├── converter_app/                 ← Electron + Svelte production GUI

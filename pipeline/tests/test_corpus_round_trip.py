@@ -8,9 +8,9 @@ fails the test, but day-to-day variance (e.g. one new edge-case
 expression appearing in the corpus) doesn't.
 
 If you intentionally improve the parser, raise the threshold. If a
-regression breaks this test, run ``tools/corpus_round_trip.py`` to see
-the failing expressions and decide whether to fix the parser or update
-the threshold.
+regression breaks this test, run it with ``-s`` and add a print in
+``_round_trip_rate`` for the mismatching expressions to decide whether
+to fix the parser or update the threshold.
 """
 
 from __future__ import annotations
@@ -58,8 +58,7 @@ def test_legacy_corpus_round_trip(corpus_legacy_dir):
     rate = success / total if total else 0.0
     assert rate >= MIN_ROUND_TRIP_RATE, (
         f"JDA corpus round-trip rate dropped: {success}/{total} "
-        f"({rate:.4%}); threshold {MIN_ROUND_TRIP_RATE:.4%}. "
-        f"Run tools/corpus_round_trip.py to see failures."
+        f"({rate:.4%}); threshold {MIN_ROUND_TRIP_RATE:.4%}."
     )
 
 
@@ -75,6 +74,5 @@ def test_pine_corpus_round_trip(corpus_pine_dir):
     rate = success / total if total else 0.0
     assert rate >= MIN_ROUND_TRIP_RATE, (
         f"Pine corpus round-trip rate dropped: {success}/{total} "
-        f"({rate:.4%}); threshold {MIN_ROUND_TRIP_RATE:.4%}. "
-        f"Run tools/corpus_round_trip.py to see failures."
+        f"({rate:.4%}); threshold {MIN_ROUND_TRIP_RATE:.4%}."
     )

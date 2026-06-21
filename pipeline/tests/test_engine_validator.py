@@ -12,7 +12,7 @@ from pipeline.engine.validator import (
     errors_only,
     warnings_only,
 )
-from pipeline.grammar.loaders import load_lint_rules, load_org_overrides
+from pipeline.grammar.loaders import load_lint_rules, load_agency_overrides
 from pipeline.parser import pine_parser
 
 
@@ -20,7 +20,7 @@ from pipeline.parser import pine_parser
 def validator_oba():
     return Validator(
         lint_rules=load_lint_rules(),
-        org=load_org_overrides("oba"),
+        agency=load_agency_overrides("oba"),
     )
 
 
@@ -148,17 +148,17 @@ class TestSingleToken:
 # ─── default construction ─────────────────────────────────────────────────
 
 class TestDefaults:
-    def test_no_org_skips_vocabulary(self):
-        # Validator with no org should still run lint + structural,
+    def test_no_agency_skips_vocabulary(self):
+        # Validator with no agency should still run lint + structural,
         # but skip vocabulary checks (no allow-list to compare against).
-        v = Validator(lint_rules=load_lint_rules(), org=None)
+        v = Validator(lint_rules=load_lint_rules(), agency=None)
         toks = _toks("@[TotallyMadeUpEntity.first.Name]")
         issues = v.validate_stream(toks)
         assert not any(i.rule_id == "unknown_entity" for i in issues)
 
     def test_no_lint_uses_default(self):
         # Construct without explicit lint_rules; default loads from disk.
-        v = Validator(org=load_org_overrides("oba"))
+        v = Validator(agency=load_agency_overrides("oba"))
         toks = _toks("@[ProsNum.first.Number.SetCasing(Upper)]")
         # Default lint rules still flag the SetCasing issue.
         assert any(i.rule_id == "no_setcasing_on_prosnum"

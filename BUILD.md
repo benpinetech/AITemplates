@@ -31,8 +31,8 @@ You build **on Windows** because PyInstaller cannot cross-compile — a
 Windows `.exe` sidecar can only be frozen on Windows. The build machine
 needs:
 
-- **Python 3.11+** — <https://www.python.org/> (check "Add to PATH")
-- **Node.js 18+** — <https://nodejs.org/>
+- **Python 3.11+** — <https://www.python.agency/> (check "Add to PATH")
+- **Node.js 18+** — <https://nodejs.agency/>
 
 The *end users* need neither.
 
@@ -105,5 +105,5 @@ live in `converter_app/build/` (`icon.ico`, `icon.png`).
 |---|---|
 | Build fails at PyInstaller step | A `dist\jda_pine_sidecar` is locked (app running). Close it and re-run. |
 | App opens but Convert is disabled | No API key saved — open **Settings** and add one. |
-| "pipeline produced non-JSON output" | The sidecar crashed. Run `…\resources\binaries\jda_pine_sidecar\jda_pine_sidecar.exe convert <file> --org oba --json` from a terminal to see the stderr. |
+| "pipeline produced non-JSON output" | The sidecar crashed. Run `…\resources\binaries\jda_pine_sidecar\jda_pine_sidecar.exe convert <file> --agency oba --json` from a terminal to see the stderr. |
 | SmartScreen blocks the installer | Expected (unsigned). **More info → Run anyway**, or sign it. |

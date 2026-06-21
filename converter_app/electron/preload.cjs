@@ -22,7 +22,7 @@ contextBridge.exposeInMainWorld("api", {
    * Run the v2 conversion pipeline on the given RTF path and return
    * the structured JSON bundle (see Agent/v2/tools/convert.py
    * --json schema: jda-pine-convert/v1).
-   * @param {{ path: string, org?: string }} args
+   * @param {{ path: string, agency?: string }} args
    * @returns {Promise<object>}
    */
   convertRtf: (args) => ipcRenderer.invoke("convertRtf", args),
@@ -71,7 +71,7 @@ contextBridge.exposeInMainWorld("api", {
    * semantics: failures are returned, not thrown, so the UI can decide
    * whether to surface them.
    * @param {{
-   *   org: string,
+   *   agency: string,
    *   scope: { kind: "template"|"audience"|"global", value: string },
    *   jda_tokens: string[],
    *   pine_tokens: string[],
@@ -84,16 +84,52 @@ contextBridge.exposeInMainWorld("api", {
   persistEdit: (args) => ipcRenderer.invoke("persistEdit", args),
 
   /**
-   * Read the user's persisted OpenAI settings (API key, model). Missing
-   * values are returned as empty strings.
-   * @returns {Promise<{ api_key: string, model: string }>}
+   * List the configured agencies for the Agency picker.
+   * @returns {Promise<Array<{ id: string, description: string }> | { error: string }>}
+   */
+  listAgencies: () => ipcRenderer.invoke("listAgencies"),
+
+  /**
+   * Create a new agency from a display name (writes an agency_overrides TOML).
+   * @param {{ name: string }} args
+   * @returns {Promise<{ id: string, description: string } | { error: string, code?: string }>}
+   */
+  createAgency: (args) => ipcRenderer.invoke("createAgency", args),
+
+  /**
+   * Delete an agency and everything tied to it (config, learned tables,
+   * saved mappings).
+   * @param {{ slug: string }} args
+   * @returns {Promise<{ ok: true, id: string } | { error: string, code?: string }>}
+   */
+  deleteAgency: (args) => ipcRenderer.invoke("deleteAgency", args),
+
+  /**
+   * Rename an agency (new id derived from the name) and migrate its data.
+   * @param {{ slug: string, name: string }} args
+   * @returns {Promise<{ id: string, description: string, old_id: string } | { error: string, code?: string }>}
+   */
+  renameAgency: (args) => ipcRenderer.invoke("renameAgency", args),
+
+  /**
+   * Teach an agency's role config from corrected CreateVar declarations.
+   * Non-CreateVar tokens are ignored. Improves future prelude generation.
+   * @param {{ agency: string, tokens: string[] }} args
+   * @returns {Promise<{ learned: number, entities: string[] } | { error: string }>}
+   */
+  learnCreateVars: (args) => ipcRenderer.invoke("learnCreateVars", args),
+
+  /**
+   * Read the user's persisted settings (API key, model, last-used agency).
+   * Missing values are returned as empty strings (no agency default).
+   * @returns {Promise<{ api_key: string, model: string, agency: string }>}
    */
   getSettings: () => ipcRenderer.invoke("getSettings"),
 
   /**
    * Merge the given fields into the persisted settings file. Unspecified
    * fields are left at their existing values.
-   * @param {{ api_key?: string, model?: string }} args
+   * @param {{ api_key?: string, model?: string, agency?: string }} args
    * @returns {Promise<{ ok: true }>}
    */
   setSettings: (args) => ipcRenderer.invoke("setSettings", args),
@@ -157,15 +193,15 @@ contextBridge.exposeInMainWorld("api", {
    * ``prelude_count`` must be the ``prelude_pine_token_count`` from the
    * original conversion result — when 0, no stripping is done (safe for
    * documents where @[CreateVar] tokens come from the source file).
-   * @param {{ rtf: string, pine_tokens: string[], org?: string, prelude_count?: number }} args
+   * @param {{ rtf: string, pine_tokens: string[], agency?: string, prelude_count?: number }} args
    * @returns {Promise<{ ok: true, rtf: string } | { error: string }>}
    */
   refreshPrelude: (args) => ipcRenderer.invoke("refreshPrelude", args),
 
   /**
-   * List all persisted suggestions for an org.
-   * @param {{ org?: string }} args
-   * @returns {Promise<Array<{ file, scope_kind, scope_value, org, jda_tokens, pine_tokens }> | { error }>}
+   * List all persisted suggestions for an agency.
+   * @param {{ agency?: string }} args
+   * @returns {Promise<Array<{ file, scope_kind, scope_value, agency, jda_tokens, pine_tokens }> | { error }>}
    */
   listSuggestions: (args) => ipcRenderer.invoke("listSuggestions", args),
 
@@ -178,7 +214,7 @@ contextBridge.exposeInMainWorld("api", {
 
   /**
    * Replace a suggestion's Pine tokens. Deletes the old file and writes a new one.
-   * @param {{ file: string, payload: { org, scope: {kind, value}, jda_tokens, pine_tokens } }} args
+   * @param {{ file: string, payload: { agency, scope: {kind, value}, jda_tokens, pine_tokens } }} args
    * @returns {Promise<{ ok: true, path: string } | { error: string }>}
    */
   updateSuggestion: (args) => ipcRenderer.invoke("updateSuggestion", args),

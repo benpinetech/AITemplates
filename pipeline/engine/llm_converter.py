@@ -4,7 +4,7 @@ The converter runs on AST-only inputs — never prose. The prompt the
 LLM sees is assembled from four constrained sources:
 
   1. The unmatched JDA token's text (its ``.unparse()``).
-  2. The org's vocabulary allow-list.
+  2. The agency's vocabulary allow-list.
   3. A handful of verified-similar (JDA, Pine) example patterns
      retrieved from the active library.
   4. A relevant grammar fragment.
@@ -36,7 +36,7 @@ import re
 from dataclasses import dataclass, field
 from typing import List, Optional, Protocol, Sequence
 
-from ..grammar.loaders import OrgRoot, OrgVocabulary
+from ..grammar.loaders import AgencyRoot, OrgVocabulary
 from ..parser import jda_parser, pine_parser
 from ..parser.jda_ast import JdaToken
 from ..parser.pine_ast import PineToken
@@ -345,15 +345,15 @@ def _similarity(a: str, b: str) -> float:
 def _select_few_shot(
     library: Sequence[Pattern],
     target: str,
-    org: str,
+    agency: str,
     k: int = 5,
 ) -> List[Pattern]:
     """Pick up to ``k`` patterns most similar to ``target`` (the
     unparsed JDA expression). Filtered to applicable patterns for
-    ``org``, sorted by Jaccard score on the match string."""
+    ``agency``, sorted by Jaccard score on the match string."""
     candidates = [
         p for p in library
-        if p.org_context in ("any", org) and not p.is_chunk_pattern()
+        if p.agency_context in ("any", agency) and not p.is_chunk_pattern()
     ]
     scored = []
     for p in candidates:
@@ -379,7 +379,7 @@ never prose, names, or document content.
 
 Pine has a UNIVERSAL system enum of involvement and assignment role
 codes (listed below) — same across all deployments. When you see a
-JDA entity prefix that isn't in the per-org translation table, find
+JDA entity prefix that isn't in the per-agency translation table, find
 the closest semantic match in this universal enum and use its Pine
 display name. ``DEFENDANT`` / ``DEFENSEATTORNEY`` / ``PROSECUTINGATTORNEY``
 etc. are standardized codes; the Pine variable name is the same
@@ -526,14 +526,14 @@ class ConversionRequest:
     the privacy and shape invariants testable."""
 
     jda_token: JdaToken
-    org: str
+    agency: str
     vocabulary: OrgVocabulary
     few_shot: List[Pattern] = field(default_factory=list)
     grammar_fragment: str = ""
     shape_examples: tuple = ()    # tuple of (match, rewrite) pairs
 
     def assemble_prompt(self) -> str:
-        # Section ordering is deliberate: ALL constant-per-org content
+        # Section ordering is deliberate: ALL constant-per-agency content
         # comes BEFORE per-token variable content, so the OpenAI prompt
         # cache hits the rules+vocab+entity-table prefix on every
         # subsequent call. The variable suffix is just the entity hint,
@@ -686,7 +686,7 @@ class BatchConversionRequest:
     """
 
     jda_tokens: tuple
-    org: str
+    agency: str
     vocabulary: OrgVocabulary
     few_shot: List[Pattern] = field(default_factory=list)
     grammar_fragment: str = ""
@@ -1036,7 +1036,7 @@ def _extract_retry_candidates(
 class LlmConverter:
     """Convert one unmatched JDA token via the LLM.
 
-    Construct once with the static library + org override; call
+    Construct once with the static library + agency override; call
     ``convert(jda_token)`` for each unmatched chunk. Returns None if
     the LLM response can't be parsed as a single Pine token — the
     caller treats that as "still unmatched" and surfaces it to the
@@ -1047,38 +1047,38 @@ class LlmConverter:
         self,
         client: LlmClient,
         library: Sequence[Pattern],
-        org_overrides: Optional[OrgRoot],
+        agency_overrides: Optional[AgencyRoot],
         few_shot_count: int = 5,
         grammar_fragment: str = "",
         shape_examples: Sequence[tuple] = (),
     ):
         self._client = client
         self._library = list(library)
-        self._org = org_overrides
+        self._agency = agency_overrides
         self._few_shot_count = few_shot_count
         self._grammar_fragment = grammar_fragment
         # tuple-ize so the field can sit on the frozen request dataclass.
         self._shape_examples = tuple((m, r) for (m, r) in shape_examples)
 
     def build_request(self, jda_token: JdaToken) -> ConversionRequest:
-        # When the caller passes ``org="any"`` the pipeline gives us
-        # ``org_overrides=None``. Fall back to a generic identity and
+        # When the caller passes ``agency="any"`` the pipeline gives us
+        # ``agency_overrides=None``. Fall back to a generic identity and
         # an empty vocabulary so the LLM still gets few-shots and
-        # grammar context, just without org-specific filtering.
-        org_id = self._org.id if self._org is not None else "any"
+        # grammar context, just without agency-specific filtering.
+        agency_id = self._agency.id if self._agency is not None else "any"
         vocabulary = (
-            self._org.vocabulary if self._org is not None
+            self._agency.vocabulary if self._agency is not None
             else OrgVocabulary(entities=[], builtins=[], prompt_variables=[])
         )
         few_shot = _select_few_shot(
             self._library,
             jda_token.unparse(),
-            org_id,
+            agency_id,
             k=self._few_shot_count,
         )
         return ConversionRequest(
             jda_token=jda_token,
-            org=org_id,
+            agency=agency_id,
             vocabulary=vocabulary,
             few_shot=few_shot,
             grammar_fragment=self._grammar_fragment,
@@ -1096,12 +1096,23 @@ class LlmConverter:
         jda_tokens: Sequence[JdaToken],
         template_name: Optional[str] = None,
         contexts: Optional[Sequence[tuple]] = None,
+        few_shot_library: Optional[Sequence[Pattern]] = None,
     ) -> "BatchConversionRequest":
-        org_id = self._org.id if self._org is not None else "any"
+        agency_id = self._agency.id if self._agency is not None else "any"
         vocabulary = (
-            self._org.vocabulary if self._org is not None
+            self._agency.vocabulary if self._agency is not None
             else OrgVocabulary(entities=[], builtins=[], prompt_variables=[])
         )
+        # Few-shot retrieval pool: the converter's static library PLUS any
+        # per-call library the pipeline passes in. The latter carries the
+        # document-scoped verified suggestions (accepted human edits), so
+        # corrections generalize to similar-but-not-identical tokens —
+        # not just the exact-match cache. De-dup by id covers the eval
+        # path, which already builds the converter with the same library.
+        retrieval_library: Sequence[Pattern] = self._library
+        if few_shot_library:
+            retrieval_library = list(self._library) + list(few_shot_library)
+
         # Few-shots: aggregate across all input tokens. We pick the
         # globally-best k by max similarity to any input token, then
         # de-duplicate. With many siblings the LLM gets a richer
@@ -1109,7 +1120,7 @@ class LlmConverter:
         seen_ids: set = set()
         merged: List[Pattern] = []
         for tok in jda_tokens:
-            for p in _select_few_shot(self._library, tok.unparse(), org_id, k=self._few_shot_count):
+            for p in _select_few_shot(retrieval_library, tok.unparse(), agency_id, k=self._few_shot_count):
                 if p.id not in seen_ids:
                     seen_ids.add(p.id)
                     merged.append(p)
@@ -1119,7 +1130,7 @@ class LlmConverter:
                 break
         return BatchConversionRequest(
             jda_tokens=tuple(jda_tokens),
-            org=org_id,
+            agency=agency_id,
             vocabulary=vocabulary,
             few_shot=merged,
             grammar_fragment=self._grammar_fragment,
@@ -1134,6 +1145,7 @@ class LlmConverter:
         template_name: Optional[str] = None,
         contexts: Optional[Sequence[tuple]] = None,
         return_drops: bool = False,
+        few_shot_library: Optional[Sequence[Pattern]] = None,
     ) -> List[List[PineToken]]:
         """Translate every unmatched token in one LLM call.
 
@@ -1159,6 +1171,7 @@ class LlmConverter:
             jda_tokens,
             template_name=template_name,
             contexts=contexts,
+            few_shot_library=few_shot_library,
         )
         prompt = req.assemble_batch_prompt()
 

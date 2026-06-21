@@ -14,7 +14,7 @@ Usage::
     echo '<rtf string>' | python -m Agent.v2.tools.update_prelude \\
         --tokens '["@[Respondent.first.NameFirstName]", ...]' \\
         --prelude-count 2 \\
-        [--org oba]
+        [--agency oba]
 """
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ if str(AGENT_DIR) not in sys.path:
     sys.path.insert(0, str(AGENT_DIR))
 
 from pipeline.engine.prelude import generate_prelude, prepend_prelude_to_rtf
-from pipeline.grammar.loaders import load_org_overrides
+from pipeline.grammar.loaders import load_agency_overrides
 from pipeline.parser.pine_parser import parse as parse_pine_token
 
 
@@ -64,7 +64,7 @@ def main() -> None:
         "--tokens", required=True,
         help="JSON array of current Pine token strings, e.g. '[\"@[Respondent.first.NameFirstName]\"]'",
     )
-    ap.add_argument("--org", default="oba", help="Org name for override config (default: oba)")
+    ap.add_argument("--agency", required=True, help="Agency name for override config")
     ap.add_argument(
         "--prelude-count", type=int, default=0,
         help="prelude_pine_token_count from the original conversion result (default: 0 = no generated prelude)",
@@ -90,18 +90,18 @@ def main() -> None:
         except Exception:
             pass  # skip malformed tokens — don't abort the whole save
 
-    # Load org overrides for proper type-code / pre-declared lookup.
+    # Load agency overrides for proper type-code / pre-declared lookup.
     try:
-        org_overrides = load_org_overrides(args.org)
+        agency_overrides = load_agency_overrides(args.agency)
     except Exception:
-        org_overrides = None
+        agency_overrides = None
 
     # Only strip a generated prelude when we know one was inserted.
     # If prelude_count == 0, @[CreateVar] tokens in the RTF came from
     # the source file, not our prelude generator — leave them untouched.
     stripped = _strip_prelude(rtf) if args.prelude_count > 0 else rtf
     try:
-        prelude_lines = generate_prelude(pine_tokens, org_overrides)
+        prelude_lines = generate_prelude(pine_tokens, agency_overrides)
     except Exception as exc:
         sys.stdout.write(json.dumps({"error": f"prelude generation failed: {exc}"}))
         return

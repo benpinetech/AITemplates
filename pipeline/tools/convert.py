@@ -1,12 +1,9 @@
-"""End-to-end conversion CLI — single template at a time.
+"""Single-template conversion — backend process spawned by the desktop app.
 
-Usage::
-
-    ./venv/bin/python Agent/v2/tools/convert.py INPUT.rtf --org oba
-    ./venv/bin/python Agent/v2/tools/convert.py INPUT.rtf --org oba --output OUT.rtf
-
-The ``--org`` flag is required: Phase 5 enforces explicit declaration.
-Inferring the org from JDA entity prefixes is a future convenience layer.
+Reads one JDA RTF, prints the JSON conversion bundle (schema
+``jda-pine-convert/v1``) to stdout for the Electron GUI to render. Not a
+human CLI: the RTF/summary output modes were removed. ``--agency`` is
+required.
 
 Exit code:
   0  — converted, no validation errors (warnings OK)
@@ -30,8 +27,8 @@ if str(REPO_ROOT) not in sys.path:
 
 from pipeline import pipeline
 from pipeline.engine.llm_converter import LlmConverter, OpenAILlmClient
-from pipeline.engine.validator import errors_only, warnings_only
-from pipeline.grammar.loaders import load_org_overrides
+from pipeline.engine.validator import errors_only
+from pipeline.grammar.loaders import load_agency_overrides
 from pipeline.patterns import loader as pattern_loader
 
 
@@ -73,7 +70,7 @@ def _load_shape_examples():
 def _load_grammar_fragment() -> str:
     """Read the Pine mapping awareness guide (``Agent/pine_context.md``)
     so the LLM has a field-level reference to consult inline. The
-    universal role enum + per-org vocabulary tell the model which
+    universal role enum + per-agency vocabulary tell the model which
     entity to use; this fragment tells it how to render the FIELDS
     on that entity (``.FullName`` wrappers, address subfields, casing,
     etc.). Failure to load is non-fatal — the LLM just runs without
@@ -85,14 +82,14 @@ def _load_grammar_fragment() -> str:
         return ""
 
 
-def _make_llm_converter(org: str) -> Optional[LlmConverter]:
+def _make_llm_converter(agency: str) -> Optional[LlmConverter]:
     """Construct an ``LlmConverter`` for this conversion if the env is
     set up for it. Returns ``None`` (so the pipeline falls back to
     patterns-only) when:
 
       - ``OPENAI_API_KEY`` is unset — no credentials available.
       - The ``openai`` SDK isn't importable.
-      - Loading the org overrides or pattern library raises.
+      - Loading the agency overrides or pattern library raises.
 
     Failure is silent here because the GUI shouldn't refuse to render a
     conversion just because the LLM happens to be unavailable; the
@@ -109,13 +106,13 @@ def _make_llm_converter(org: str) -> Optional[LlmConverter]:
     except Exception:  # noqa: BLE001 — fallback should never abort convert
         library = []
     try:
-        org_overrides = load_org_overrides(org) if org != "any" else None
+        agency_overrides = load_agency_overrides(agency) if agency != "any" else None
     except Exception:  # noqa: BLE001
-        org_overrides = None
+        agency_overrides = None
     return LlmConverter(
         client=client,
         library=library,
-        org_overrides=org_overrides,
+        agency_overrides=agency_overrides,
         grammar_fragment=_load_grammar_fragment(),
         shape_examples=_load_shape_examples(),
     )
@@ -181,7 +178,7 @@ def _result_to_json(result, *, source_rtf: str, source_path: Path) -> dict:
         },
         "template_name": result.template_name,
         "audience": result.audience,
-        "org": result.org,
+        "agency": result.agency,
         "prelude_pine_token_count": prelude_pine_token_count,
         "totals": {
             "jda_tokens": result.total_jda_tokens,
@@ -226,18 +223,14 @@ def _result_to_json(result, *, source_rtf: str, source_path: Path) -> dict:
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("input", type=Path, help="JDA RTF file to convert")
-    p.add_argument("--org", required=True,
-                   help="org context (e.g. 'oba'). Must match a "
-                        "grammar/org_overrides/<org>.toml file or be 'any'.")
-    p.add_argument("--output", type=Path, default=None,
-                   help="write converted RTF here (default: stdout)")
-    p.add_argument("--json", action="store_true",
-                   help="print a structured JSON bundle to stdout instead "
-                        "of RTF — used by the Electron GUI to render the "
-                        "two panes + per-segment provenance.")
-    p.add_argument("--summary", action="store_true",
-                   help="print provenance + issues summary to stderr")
-    p.add_argument("--quiet", action="store_true")
+    p.add_argument("--agency", required=True,
+                   help="agency context (e.g. 'oba'). Must match a "
+                        "grammar/agency_overrides/<agency>.toml file or be 'any'.")
+    # ``--json`` / ``--quiet`` are accepted for compatibility with how the
+    # desktop app spawns this process. Output is always the JSON bundle now;
+    # the human-readable RTF/summary modes were removed (GUI-only backend).
+    p.add_argument("--json", action="store_true", help=argparse.SUPPRESS)
+    p.add_argument("--quiet", action="store_true", help=argparse.SUPPRESS)
     p.add_argument("--no-llm", action="store_true",
                    help="skip the LLM converter (accepted suggestions only — "
                         "useful for offline runs).")
@@ -258,7 +251,7 @@ def main(argv=None) -> int:
         args.input.read_text(encoding="utf-8", errors="replace")
     )
     # Construct the LLM converter unless explicitly disabled.
-    llm = None if args.no_llm else _make_llm_converter(args.org)
+    llm = None if args.no_llm else _make_llm_converter(args.agency)
 
     # Diagnostic line — written to stderr, never to stdout (stdout is
     # the JSON wire format). Surfaces in the Electron dev terminal via
@@ -274,55 +267,22 @@ def main(argv=None) -> int:
     else:
         reason = (
             "OPENAI_API_KEY not in env" if not os.environ.get("OPENAI_API_KEY")
-            else "openai SDK or org overrides failed to load"
+            else "openai SDK or agency overrides failed to load"
         )
         print(f"[convert] LLM converter OFF — {reason}.", file=sys.stderr)
 
     try:
         result = pipeline.convert_file(
-            args.input, args.org,
-            output_path=args.output,
+            args.input, args.agency,
             converter=llm,
         )
     except FileNotFoundError as e:
         print(f"file error: {e}", file=sys.stderr)
         return 2
 
-    if args.json:
-        # In JSON mode, stdout is the wire format — never mix
-        # human-readable summary into it. ``--summary`` still goes to
-        # stderr if requested.
-        bundle = _result_to_json(result, source_rtf=source_rtf, source_path=args.input)
-        sys.stdout.write(json.dumps(bundle))
-    elif args.output is None:
-        sys.stdout.write(result.converted_rtf)
-
-    # In JSON mode we never spam stderr unless the caller explicitly
-    # asked for a summary (machine consumers like the GUI keep --json
-    # alone). Otherwise the default is to show a summary.
-    show_summary = args.summary if args.json else (args.summary or not args.quiet)
-    if show_summary:
-        print(file=sys.stderr)
-        print(f"  {result.summary_line()}", file=sys.stderr)
-        prov = result.by_provenance
-        if prov[pipeline.PROV_UNMATCHED]:
-            print(f"  unmatched JDA tokens left in output:", file=sys.stderr)
-            for s in result.segments:
-                if s.provenance == pipeline.PROV_UNMATCHED:
-                    for tok in s.source_jda_tokens:
-                        print(f"    {tok.unparse()}", file=sys.stderr)
-        errors = errors_only(result.issues)
-        warnings = warnings_only(result.issues)
-        if errors:
-            print(f"  errors ({len(errors)}):", file=sys.stderr)
-            for e in errors:
-                idx = "" if e.token_index is None else f" @{e.token_index}"
-                print(f"    [{e.rule_id}]{idx} {e.message}", file=sys.stderr)
-        if warnings and args.summary:
-            print(f"  warnings ({len(warnings)}):", file=sys.stderr)
-            for w in warnings:
-                idx = "" if w.token_index is None else f" @{w.token_index}"
-                print(f"    [{w.rule_id}]{idx} {w.message}", file=sys.stderr)
+    # stdout is always the JSON wire format the desktop app consumes.
+    bundle = _result_to_json(result, source_rtf=source_rtf, source_path=args.input)
+    sys.stdout.write(json.dumps(bundle))
 
     return 1 if errors_only(result.issues) else 0
 
