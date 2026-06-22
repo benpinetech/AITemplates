@@ -63,7 +63,7 @@
   }
 
   function scopeLabel(m) {
-    if (m.scope_kind === "global") return "Global";
+    if (m.scope_kind === "global") return "Agency";
     return m.scope_value || m.scope_kind;
   }
 
@@ -128,7 +128,7 @@
     if (!jda) { formError = "Enter a JDA token."; return; }
     if (!pine.length) { formError = "Add at least one Pine token."; return; }
     if (scopeKind !== "global" && !scopeValue.trim()) {
-      formError = `Enter a ${scopeKind} value (or choose Global scope).`;
+      formError = `Enter a ${scopeKind} value (or choose Agency scope).`;
       return;
     }
     saving = true;
@@ -156,12 +156,23 @@
   }
 
   // ── Delete ────────────────────────────────────────────────────
+  let deletingFile = $state(null);
   async function deleteMapping(file) {
-    const r = await window.api.deleteSuggestion({ file });
-    if (r?.ok) {
-      mappings = mappings.filter((m) => m.file !== file);
-    } else {
-      loadError = r?.error || "Delete failed.";
+    if (deletingFile) return;
+    deletingFile = file;
+    loadError = "";
+    try {
+      const r = await window.api.deleteSuggestion({ file });
+      if (r?.ok) {
+        await load();   // reload from disk so the table reflects what's actually there
+      } else {
+        loadError = r?.error || "Delete failed.";
+      }
+    } catch (e) {
+      // A rejected IPC (e.g. a stale backend) must surface, not fail silently.
+      loadError = `Couldn't delete: ${e?.message || e}`;
+    } finally {
+      deletingFile = null;
     }
   }
 </script>
@@ -195,84 +206,13 @@
       </header>
 
       <div class="body">
-        {#if formMode}
-          <!-- ── Add / Edit form ─────────────────────────────── -->
-          <div class="form">
-            <div class="form-title">{formMode === "edit" ? "Edit mapping" : "New mapping"}</div>
-
-            <label class="field">
-              <span class="field-label">JDA token</span>
-              <input
-                class="text-input mono"
-                bind:value={jdaText}
-                placeholder="%[Cust_Name]"
-                spellcheck="false"
-              />
-            </label>
-
-            <div class="field">
-              <span class="field-label">Pine token(s)</span>
-              <div class="pine-rows">
-                {#each pineRows as _row, i (i)}
-                  <div class="pine-row">
-                    <input
-                      class="text-input mono"
-                      bind:value={pineRows[i]}
-                      placeholder="@[Complainant.first.NameFirst]"
-                      spellcheck="false"
-                      onkeydown={(e) => { if (e.key === "Enter" && i === pineRows.length - 1) { e.preventDefault(); addPineRow(); } }}
-                    />
-                    <button
-                      class="row-btn remove"
-                      title="Remove this Pine token"
-                      onclick={() => removePineRow(i)}
-                      disabled={pineRows.length === 1 && !pineRows[0]}
-                    >−</button>
-                  </div>
-                {/each}
-              </div>
-              <button class="add-row" onclick={addPineRow}>+ Add another Pine token</button>
-            </div>
-
-            <label class="field">
-              <span class="field-label">Scope</span>
-              <div class="scope-row">
-                <select class="text-input" bind:value={scopeKind}>
-                  <option value="global">Global</option>
-                  <option value="template">Template</option>
-                  <option value="audience">Audience</option>
-                </select>
-                {#if scopeKind !== "global"}
-                  <input
-                    class="text-input"
-                    bind:value={scopeValue}
-                    placeholder={scopeKind === "template" ? "template filename, e.g. 3A.rtf" : "audience, e.g. attorney"}
-                    spellcheck="false"
-                  />
-                {/if}
-              </div>
-            </label>
-
-            {#if formError}
-              <div class="inline-error">{formError}</div>
-            {/if}
-
-            <div class="form-actions">
-              <button class="btn-primary" onclick={saveForm} disabled={saving}>
-                {saving ? "Saving…" : formMode === "edit" ? "Save changes" : "Save mapping"}
-              </button>
-              <button class="btn-ghost" onclick={closeForm} disabled={saving}>Cancel</button>
-            </div>
-          </div>
-        {/if}
-
         {#if status === "loading"}
           <div class="state-msg">Loading…</div>
         {:else if status === "error"}
           <div class="state-msg error">{loadError}</div>
-        {:else if mappings.length === 0 && !formMode}
+        {:else if mappings.length === 0}
           <div class="state-msg muted">
-            No saved mappings yet. Add one above, or edits you make while converting will appear here.
+            No saved mappings yet. Use “+ Add mapping”, or edits you make while converting will appear here.
           </div>
         {:else if mappings.length > 0}
           {#if loadError}
@@ -309,8 +249,10 @@
                     <span class="scope-badge scope-{m.scope_kind}">{scopeLabel(m)}</span>
                   </td>
                   <td class="col-actions">
-                    <button class="act edit" onclick={() => openEdit(m)} title="Edit mapping">Edit</button>
-                    <button class="act delete" onclick={() => deleteMapping(m.file)} title="Delete">×</button>
+                    <button class="act edit" onclick={() => openEdit(m)} disabled={deletingFile === m.file} title="Edit mapping">Edit</button>
+                    <button class="act delete" onclick={() => deleteMapping(m.file)} disabled={deletingFile === m.file} title="Delete">
+                      {deletingFile === m.file ? "…" : "×"}
+                    </button>
                   </td>
                 </tr>
               {/each}
@@ -324,6 +266,97 @@
       </footer>
     </div>
   </div>
+
+  {#if formMode}
+    <!-- ── Add / Edit mapping — centered popup over the dialog ──────── -->
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="form-backdrop" onclick={() => { if (!saving) closeForm(); }} role="presentation">
+      <div
+        class="form-modal"
+        role="dialog"
+        aria-modal="true"
+        tabindex="-1"
+        onclick={(e) => e.stopPropagation()}
+        onkeydown={onKeyDown}
+      >
+        <div class="form">
+          <div class="form-title">{formMode === "edit" ? "Edit mapping" : "New mapping"}</div>
+
+          <label class="field">
+            <span class="field-label">JDA token</span>
+            <input
+              class="text-input mono"
+              bind:value={jdaText}
+              placeholder="%[Cust_Name]"
+              spellcheck="false"
+            />
+          </label>
+
+          <div class="field">
+            <span class="field-label">Pine token(s)</span>
+            <div class="pine-rows">
+              {#each pineRows as _row, i (i)}
+                <div class="pine-row">
+                  <input
+                    class="text-input mono"
+                    bind:value={pineRows[i]}
+                    placeholder="@[Complainant.first.NameFirst]"
+                    spellcheck="false"
+                    onkeydown={(e) => { if (e.key === "Enter" && i === pineRows.length - 1) { e.preventDefault(); addPineRow(); } }}
+                  />
+                  <button
+                    class="row-btn remove"
+                    title="Remove this Pine token"
+                    onclick={() => removePineRow(i)}
+                    disabled={pineRows.length === 1 && !pineRows[0]}
+                  >−</button>
+                </div>
+              {/each}
+            </div>
+            <button class="add-row" onclick={addPineRow}>+ Add another Pine token</button>
+          </div>
+
+          <label class="field">
+            <span
+              class="field-label"
+              title="How widely this mapping applies. Agency: every template in this agency. Audience: documents of one type. Template: only this one file. Narrower wins over broader."
+            >Scope ⓘ</span>
+            <div class="scope-row">
+              <select
+                class="text-input"
+                bind:value={scopeKind}
+                title="How widely this mapping applies — narrower scopes override broader ones."
+              >
+                <option value="global" title="Applies to every template in this agency.">Agency</option>
+                <option value="audience" title="Applies to documents of one type (e.g. attorney letters).">Audience</option>
+                <option value="template" title="Applies only to this one template file.">Template</option>
+              </select>
+              {#if scopeKind !== "global"}
+                <input
+                  class="text-input"
+                  bind:value={scopeValue}
+                  placeholder={scopeKind === "template" ? "template filename, e.g. 3A.rtf" : "audience, e.g. attorney"}
+                  spellcheck="false"
+                />
+              {/if}
+            </div>
+          </label>
+
+          {#if formError}
+            <div class="inline-error">{formError}</div>
+          {/if}
+
+          <div class="form-actions">
+            <button class="btn-primary" onclick={saveForm} disabled={saving}>
+              {saving ? "Saving…" : formMode === "edit" ? "Save changes" : "Save mapping"}
+            </button>
+            <button class="btn-ghost" onclick={closeForm} disabled={saving}>Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  {/if}
 {/if}
 
 <style>
@@ -391,13 +424,28 @@
   }
 
   /* ── Add / Edit form ─────────────────────────────────────────── */
+  /* Add / Edit mapping — a centered popup over the dialog. */
+  .form-backdrop {
+    position: fixed; inset: 0; z-index: 110;
+    background: rgba(8, 10, 18, 0.6);
+    backdrop-filter: blur(2px);
+    display: grid; place-items: center;
+    animation: fade 100ms ease;
+  }
+  .form-modal {
+    width: min(560px, 92vw);
+    max-height: 88vh;
+    overflow-y: auto;
+    background: #14151e;
+    border: 1px solid #2a2d3a;
+    border-radius: 12px;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+  }
   .form {
-    padding: 20px 24px;
-    border-bottom: 1px solid #1f212d;
-    background: #0e0f17;
+    padding: 22px 24px;
     display: flex; flex-direction: column; gap: 14px;
   }
-  .form-title { font-size: 14px; font-weight: 700; color: #c7cad6; letter-spacing: 0.02em; }
+  .form-title { font-size: 16px; font-weight: 700; color: #e6e8ef; letter-spacing: 0.01em; }
   .field { display: flex; flex-direction: column; gap: 6px; }
   .field-label {
     font-size: 11px; font-weight: 700; text-transform: uppercase;
@@ -467,7 +515,7 @@
     overflow: hidden;
   }
   tbody tr {
-    border-bottom: 1px solid #13141e;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     transition: background 0.1s;
   }
   tbody tr:last-child { border-bottom: none; }

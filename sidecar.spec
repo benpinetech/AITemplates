@@ -22,9 +22,14 @@ from PyInstaller.utils.hooks import collect_submodules
 REPO_ROOT = Path(SPECPATH)  # noqa: F821  (SPECPATH set by PyInstaller)
 
 # ── Data files bundled into the binary ───────────────────────────────────────
+_grammar = REPO_ROOT / "pipeline" / "grammar"
 datas = [
-    # Grammar TOML files (org overrides, lint rules, pine grammar)
-    (str(REPO_ROOT / "pipeline" / "grammar"), "pipeline/grammar"),
+    # Read-only grammar config (pine grammar, data model, lint rules) — only the
+    # top-level .toml files, NOT agency_overrides/. Agencies are user data and
+    # live in the writable userData dir at runtime (JDA_AGENCY_DIR; see
+    # converter_app/electron/main.cjs), so NO agency configs are bundled into
+    # the install — a fresh install starts with an empty agency list.
+    *[(str(f), "pipeline/grammar") for f in sorted(_grammar.glob("*.toml"))],
     # LLM few-shot examples
     (str(REPO_ROOT / "pipeline" / "engine" / "llm_examples.toml"), "pipeline/engine"),
     # Pine field reference used as LLM context

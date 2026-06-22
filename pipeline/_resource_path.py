@@ -34,3 +34,17 @@ def suggestions_dir() -> Path:
         p.mkdir(parents=True, exist_ok=True)
         return p
     return BASE / "pipeline" / "suggestions"
+
+
+# Agency-overrides directory — also user data (agencies are created/renamed/
+# deleted at runtime), so it must be writable and live OUTSIDE the read-only
+# frozen bundle. Packaged builds pass JDA_AGENCY_DIR (a userData path) via env;
+# no agency configs are bundled into the install. Dev falls back to the source
+# tree so the repo's reference configs (e.g. oba.toml) are available.
+def agency_overrides_dir() -> Path:
+    env_override = os.environ.get("JDA_AGENCY_DIR")
+    if env_override:
+        p = Path(env_override)
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+    return GRAMMAR_DIR / "agency_overrides"

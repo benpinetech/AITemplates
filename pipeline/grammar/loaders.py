@@ -18,9 +18,16 @@ from typing import Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
-from pipeline._resource_path import GRAMMAR_DIR as _GRAMMAR_DIR
+from pipeline._resource_path import (
+    GRAMMAR_DIR as _GRAMMAR_DIR,
+    agency_overrides_dir as _agency_overrides_dir,
+)
 
-_AGENCY_OVERRIDES_DIR = _GRAMMAR_DIR / "agency_overrides"
+# Agencies are user data (created/renamed/deleted at runtime), so this resolves
+# to a writable location: JDA_AGENCY_DIR (userData) in packaged builds, the
+# source tree in dev. Resolved at import — the sidecar spawns a fresh process
+# per call with the env set, so the override always takes effect.
+_AGENCY_OVERRIDES_DIR = _agency_overrides_dir()
 
 
 # ─────────────────────────────────────────────────────────────────────────────

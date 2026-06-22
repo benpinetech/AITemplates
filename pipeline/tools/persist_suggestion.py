@@ -46,6 +46,61 @@ def _parse_scope(payload_scope) -> suggestion_store.Scope:
     return (kind, value)
 
 
+def _persist_one(item, agency, scope, *, source_template, note):
+    """Prune + accept one mapping. Returns the written path; raises on bad input."""
+    jda_tokens = item["jda_tokens"]
+    pine_tokens = item["pine_tokens"]
+    suggestion_store.prune_conflicting_in_scope(
+        jda_tokens, pine_tokens, agency, scope=scope,
+    )
+    return suggestion_store.accept_suggestion(
+        jda_tokens, pine_tokens, agency,
+        scope=scope,
+        source_template=item.get("source_template", source_template),
+        source_segment_index=item.get("segment_index"),
+        note=item.get("note", note),
+    )
+
+
+def _run_batch(payload) -> int:
+    """Persist many mappings in one process (the "Verify all" flow). Shares
+    the top-level agency/scope/source_template/note; each item supplies its
+    own ``jda_tokens``/``pine_tokens`` (+ optional ``segment_index``).
+
+    Always exits 0 once it runs; per-item outcomes are in ``results`` (aligned
+    with the input order) so the caller can mark each chip saved or errored.
+    """
+    agency = payload.get("agency")
+    if not agency:
+        print(json.dumps({"error": "missing required field: 'agency'"}))
+        return 1
+    scope = _parse_scope(payload.get("scope"))
+    source_template = payload.get("source_template")
+    note = payload.get("note")
+    batch = payload["batch"]
+
+    results = []
+    ok_count = 0
+    for item in batch:
+        try:
+            path = _persist_one(
+                item, agency, scope,
+                source_template=source_template, note=note,
+            )
+            results.append({"ok": True, "path": str(path)})
+            ok_count += 1
+        except Exception as e:  # noqa: BLE001 — keep going; report per item
+            results.append({"ok": False, "error": str(e)})
+
+    print(json.dumps({
+        "ok": True,
+        "count": ok_count,
+        "total": len(batch),
+        "results": results,
+    }))
+    return 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         description="Persist an inline edit as a scoped suggestion."
@@ -61,6 +116,11 @@ def main(argv=None) -> int:
     except json.JSONDecodeError as e:
         print(json.dumps({"error": f"bad --payload JSON: {e}"}))
         return 1
+
+    # Batch mode (the "Verify all suggestions" flow) persists many mappings
+    # in a single process instead of spawning Python once per chip.
+    if isinstance(payload.get("batch"), list):
+        return _run_batch(payload)
 
     try:
         agency = payload["agency"]

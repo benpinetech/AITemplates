@@ -1275,18 +1275,35 @@
 
   function makeChipSpan(part, pi) {
     const span = document.createElement("span");
-    span.className = part.kind === "pine" ? "token-pine" : "token-legacy";
-    if (part.kind === "pine") {
-      const es = editStateForPart(pi);
-      if (es?.status === "saved") span.classList.add("edited");
-      else if (es?.status === "pending") span.classList.add("saving");
-      else if (es?.status === "error") span.classList.add("save-error");
-    } else {
-      span.classList.add("static");
-    }
     span.contentEditable = "false";
     span.dataset.partIdx = String(pi);
-    span.textContent = part.text;
+    if (part.kind === "pine") {
+      span.className = "token-pine";
+      // Verified / saved mappings go green; everything else (LLM suggestions,
+      // prelude CreateVars, added chips) keeps the base teal. In-flight save
+      // states win while pending/errored.
+      const es = editStateForPart(pi);
+      const prov = segmentForPinePart(pi)?.segment?.provenance;
+      if (es?.status === "pending") span.classList.add("saving");
+      else if (es?.status === "error") span.classList.add("save-error");
+      else if (es?.status === "saved" || prov === "suggestion") span.classList.add("verified");
+      // Edit in place: the ``@[`` / ``]`` delimiters are non-editable guards
+      // around a nested-editable middle so the caret lands between the
+      // brackets and the user can't accidentally delete them.
+      const m = part.text.match(/^@\[([\s\S]*)\]$/);
+      const innerText = m ? m[1] : part.text.replace(/^@\[/, "").replace(/\]$/, "");
+      const lb = document.createElement("span");
+      lb.className = "chip-bracket"; lb.contentEditable = "false"; lb.textContent = "@[";
+      const inner = document.createElement("span");
+      inner.className = "chip-inner"; inner.contentEditable = "true"; inner.spellcheck = false;
+      inner.textContent = innerText;
+      const rb = document.createElement("span");
+      rb.className = "chip-bracket"; rb.contentEditable = "false"; rb.textContent = "]";
+      span.append(lb, inner, rb);
+    } else {
+      span.className = "token-legacy static";
+      span.textContent = part.text;
+    }
     return span;
   }
 
@@ -1397,7 +1414,7 @@
    *  changed region into the RTF. Robust for the single contiguous edit a
    *  keystroke/selection-replace produces. */
   function syncPineEditor() {
-    if (!pineEditorEl) return;
+    if (!pineEditorEl || editingChip) return;   // chip edits commit via applyPineEdit
     const dom = serializePineEditor();
     const old = pineDisplay.text;
     if (dom === old) return;
@@ -1443,15 +1460,21 @@
     try { document.execCommand("defaultParagraphSeparator", false, "p"); } catch { /* unsupported */ }
   }
   function onEditorBlur() {
+    if (editingChip) return;   // in-place chip edit commits via its own paths
     flushPineSync();
     pineTyping = false;
     lastBuiltRtf = result?.converted?.rtf || "";   // DOM already matches; skip rebuild
   }
   function onEditorInput() {
+    if (editingChip) return;   // chip middle edits don't go through prose sync
     if (pineSyncTimer) clearTimeout(pineSyncTimer);
     pineSyncTimer = setTimeout(() => { pineSyncTimer = null; syncPineEditor(); }, 140);
   }
   function onEditorKeydown(e) {
+    if (editingChip) {
+      if (e.key === "Enter") { e.preventDefault(); commitInlineEdit(); return; }
+      if (e.key === "Escape") { e.preventDefault(); cancelInlineEdit(); return; }
+    }
     if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "y")) {
       // Let the app-level undo/redo own history (it snapshots full RTF).
       e.preventDefault();
@@ -1474,28 +1497,68 @@
     const partIdx = Number(chip.dataset.partIdx);
     const part = pineParts[partIdx];
     if (!part || part.kind !== "pine") return;   // legacy chips are read-only
-    const r = chip.getBoundingClientRect();
-    editingChip = { partIndex: partIdx, x: r.left, y: r.bottom + 4, text: part.text };
+    if (editingChip?.partIndex === partIdx) return; // already editing — let the click move the caret
+    // Did the click land in the editable middle? If so the browser already
+    // placed the caret where the user clicked — don't override it.
+    const caretFromClick = !!e.target.closest?.(".chip-inner");
+    startInlineEdit(partIdx, caretFromClick);
   }
   function onEditorHover(e) {
     const chip = e.target.closest?.("[data-part-idx]");
     if (!chip) { hideInfo(); return; }
     const partIdx = Number(chip.dataset.partIdx);
-    if (pineParts[partIdx]?.kind === "pine") showInfoPine(partIdx, e);
+    if (pineParts[partIdx]?.kind === "pine") showInfoPine(partIdx, chip);
   }
 
-  /** Commit the floating chip editor. Reuses the suggestion / CreateVar-learn
-   *  paths so accepted edits still persist and generalize. */
-  function commitChipEditor(raw) {
+  /** Put the caret inside a chip's editable middle, just before the closing
+   *  ``]`` (i.e. at the end of the inner text). */
+  function focusChipInner(partIdx) {
+    const inner = pineEditorEl?.querySelector(`[data-part-idx="${partIdx}"] .chip-inner`);
+    if (!inner) return;
+    inner.focus();
+    const range = document.createRange();
+    range.selectNodeContents(inner);
+    range.collapse(false); // caret at end → just before the ]
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  /** Begin inline editing a Pine chip: anchor the info card (source + Delete)
+   *  just below the chip. No separate popup. When the click didn't already
+   *  land in the editable middle (e.g. on a bracket), focus it as a fallback;
+   *  otherwise leave the caret where the user clicked. */
+  function startInlineEdit(partIdx, caretFromClick = false) {
+    if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
+    editingChip = { partIndex: partIdx };
+    if (!caretFromClick) queueMicrotask(() => focusChipInner(partIdx));
+    const chip = pineEditorEl?.querySelector(`[data-part-idx="${partIdx}"]`);
+    if (chip) {
+      const r = chip.getBoundingClientRect();
+      const info = segmentForPinePart(partIdx);
+      hoverInfo = buildHoverPayload({ left: r.left, right: r.right, top: r.top, bottom: r.bottom }, info);
+      if (info) highlightedSegmentIndex = info.segment.index;
+    }
+  }
+
+  /** Commit the in-place chip edit. Reads the chip's middle text and routes
+   *  through the suggestion / CreateVar-learn paths so accepted edits persist
+   *  and generalize. Reverts (rebuild only) on no-op / empty. */
+  function commitInlineEdit() {
     const ec = editingChip;
-    editingChip = null;
     if (!ec) return;
+    editingChip = null;
+    pineTyping = false;
+    hoverInfo = null;
+    highlightedSegmentIndex = null;
     const part = pineParts[ec.partIndex];
-    if (!part) return;
-    const cleaned = (raw ?? "").trim();
-    if (!cleaned) return;
-    const wrapped = /^@\[[\s\S]*\]$/.test(cleaned) ? cleaned : `@[${cleaned}]`;
-    if (wrapped === part.text) return;
+    const innerEl = pineEditorEl?.querySelector(`[data-part-idx="${ec.partIndex}"] .chip-inner`);
+    const inner = (innerEl?.textContent ?? "").replace(/ /g, " ").trim();
+    if (!part) { bumpEditor(); return; }
+    const wrapped = inner
+      ? (/^@\[[\s\S]*\]$/.test(inner) ? inner : `@[${inner}]`)
+      : "";
+    if (!wrapped || wrapped === part.text) { bumpEditor(); return; } // revert → resync DOM
     if (/CreateVar/.test(wrapped) || /CreateVar/.test(part.text)) {
       learnCreateVarEdit(ec.partIndex, part, wrapped);
     } else {
@@ -1503,6 +1566,34 @@
     }
     bumpEditor();
   }
+
+  /** Abandon an in-place edit (Escape): rebuild restores the original text. */
+  function cancelInlineEdit() {
+    if (!editingChip) return;
+    editingChip = null;
+    pineTyping = false;
+    hoverInfo = null;
+    highlightedSegmentIndex = null;
+    bumpEditor();
+  }
+
+  // While a chip is being edited in place, a mousedown anywhere outside that
+  // chip and its info card commits and dismisses (clicking onto prose, the
+  // canvas, another chip, or the toolbar). The Delete button uses
+  // mousedown+preventDefault and lives in the card, so it's excluded here.
+  $effect(() => {
+    if (!editingChip) return;
+    const partIdx = editingChip.partIndex;
+    const onDown = (ev) => {
+      const t = ev.target;
+      const chip = pineEditorEl?.querySelector(`[data-part-idx="${partIdx}"]`);
+      if (chip && chip.contains(t)) return;
+      if (t.closest?.(".info-card")) return;
+      commitInlineEdit();
+    };
+    document.addEventListener("mousedown", onDown, true);
+    return () => document.removeEventListener("mousedown", onDown, true);
+  });
 
   // Rebuild the editor DOM on external RTF changes (convert, undo/redo, chip
   // edit, add-var, prelude refresh) — but never mid-typing, so the caret is
@@ -1731,6 +1822,146 @@
     return { kind: "global", value: "" };
   }
 
+  // User-facing label for a scope kind. The on-disk kind stays "global", but
+  // since everything is already scoped to the selected agency we show "agency".
+  function scopeKindLabel(kind) {
+    return kind === "global" ? "agency" : kind;
+  }
+
+  // ── Bulk "Verify all suggestions" ─────────────────────────────────────
+  // The LLM-generated segments of the current conversion that aren't already
+  // backed by a saved mapping. These are the "suggested" mappings a mapper
+  // can accept en masse instead of clicking each chip. A segment needs a JDA
+  // source to form a mapping; ones already saved/edited this session are
+  // skipped (their chips are marked saved in editedKeys).
+  let llmSegments = $derived.by(() => {
+    if (!result?.segments) return [];
+    return result.segments.filter((s) =>
+      s.provenance === "llm" &&
+      Array.isArray(s.jda_tokens) && s.jda_tokens.length > 0 &&
+      !(editedKeys[`${s.index}/0`]?.status === "saved")
+    );
+  });
+
+  let verifyOpen = $state(false);
+  let verifying = $state(false);
+  let verifyError = $state("");
+  // Hovering the "Verify N" button previews which chips would be saved.
+  let highlightVerifiable = $state(false);
+
+  // Toggle a ``will-verify`` marker on the chips backed by the segments the
+  // "Verify all" action would persist, so hovering the button shows exactly
+  // what's affected.
+  $effect(() => {
+    const el = pineEditorEl;
+    editorVersion;                       // re-apply after a DOM rebuild
+    if (!el) return;
+    const on = highlightVerifiable;
+    const ids = on ? new Set(llmSegments.map((s) => s.index)) : null;
+    for (const span of el.querySelectorAll(".token-pine")) {
+      const info = on ? segmentForPinePart(Number(span.dataset.partIdx)) : null;
+      span.classList.toggle("will-verify", !!(info && ids.has(info.segment.index)));
+    }
+  });
+
+  function openVerifyAll() {
+    if (!llmSegments.length) return;
+    highlightVerifiable = false;
+    verifyError = "";
+    verifyOpen = true;
+  }
+
+  // Mark every Pine token of the given segments with one status.
+  function markSegmentKeys(segs, status) {
+    const next = { ...editedKeys };
+    for (const s of segs) {
+      const n = (s.pine_tokens || []).length || 1;
+      for (let t = 0; t < n; t++) next[`${s.index}/${t}`] = status;
+    }
+    editedKeys = next;
+  }
+
+  async function confirmVerifyAll() {
+    const scope = defaultScope();
+    const segs = llmSegments;
+    if (!scope || !segs.length) { verifyOpen = false; return; }
+    verifying = true;
+    verifyError = "";
+    const batch = segs.map((s) => ({
+      jda_tokens: Array.from(s.jda_tokens || []),
+      pine_tokens: Array.from(s.pine_tokens || []),
+      segment_index: s.index,
+    }));
+    markSegmentKeys(segs, { status: "pending" });
+    try {
+      const r = await window.api.persistEdit({
+        agency: result.agency || selectedAgency,
+        scope: { kind: scope.kind, value: scope.value ?? "" },
+        source_template: result.template_name,
+        note: `bulk-verified from converter_app (scope=${scope.kind})`,
+        batch,
+      });
+      if (!r?.ok) {
+        verifyError = r?.error || "Verify failed.";
+        markSegmentKeys(segs, { status: "error", error: verifyError });
+        return;
+      }
+      // Apply per-item outcomes so a partial failure marks only the bad ones.
+      const next = { ...editedKeys };
+      const results = Array.isArray(r.results) ? r.results : [];
+      segs.forEach((s, i) => {
+        const ok = results[i] ? results[i].ok : true;
+        const n = (s.pine_tokens || []).length || 1;
+        for (let t = 0; t < n; t++) {
+          next[`${s.index}/${t}`] = ok
+            ? { status: "saved" }
+            : { status: "error", error: results[i]?.error || "failed" };
+        }
+      });
+      editedKeys = next;
+      verifyOpen = false;
+      const failed = (r.total ?? segs.length) - (r.count ?? segs.length);
+      const okN = r.count ?? segs.length;
+      learnedNote = failed > 0
+        ? `Verified ${okN} suggestion${okN === 1 ? "" : "s"} (${failed} failed) as ${scopeKindLabel(scope.kind)} mappings.`
+        : `Verified ${okN} suggestion${okN === 1 ? "" : "s"} as ${scopeKindLabel(scope.kind)} mappings.`;
+    } catch (e) {
+      verifyError = `Couldn't verify: ${e?.message || e}`;
+      markSegmentKeys(segs, { status: "error", error: verifyError });
+    } finally {
+      verifying = false;
+    }
+  }
+
+  /** Verify a single mapping from its card: persist the chip's current
+   *  jda→pine as a verified suggestion (unchanged) at the default scope. */
+  function verifyChip(partIndex) {
+    const info = segmentForPinePart(partIndex);
+    editingChip = null;
+    hoverInfo = null;
+    highlightedSegmentIndex = null;
+    pineTyping = false;
+    const seg = info?.segment;
+    if (!seg || !seg.jda_tokens?.length || !seg.pine_tokens?.length) { bumpEditor(); return; }
+    const scope = defaultScope();
+    markSegmentKeys([seg], { status: "pending" });
+    bumpEditor();
+    window.api.persistEdit({
+      agency: result.agency || selectedAgency,
+      scope: { kind: scope.kind, value: scope.value ?? "" },
+      jda_tokens: Array.from(seg.jda_tokens),
+      pine_tokens: Array.from(seg.pine_tokens),
+      source_template: result.template_name,
+      segment_index: seg.index,
+      note: `verified single mapping from converter_app (scope=${scope.kind})`,
+    }).then((r) => {
+      markSegmentKeys([seg], r?.ok ? { status: "saved" } : { status: "error", error: r?.error || "failed" });
+      if (r?.ok) learnedNote = `Verified 1 mapping as ${scopeKindLabel(scope.kind)} mapping.`;
+    }).catch((e) => {
+      markSegmentKeys([seg], { status: "error", error: String(e?.message || e) });
+    });
+  }
+
   /**
    * Delete a Pine var entirely: remove the chip (and its identical
    * twins) from the document and persist a *drop* — an empty-rewrite
@@ -1757,6 +1988,8 @@
       editingChip = null;
       hoverInfo = null;
       highlightedSegmentIndex = null;
+      pineTyping = false;   // leaving the in-place edit; allow the rebuild
+      bumpEditor();
       return;
     }
 
@@ -1791,6 +2024,8 @@
     editingChip = null;
     hoverInfo = null;
     highlightedSegmentIndex = null;
+    pineTyping = false;   // leaving the in-place edit; allow the rebuild
+    bumpEditor();
 
     const effectiveScope = defaultScope();
     if (!effectiveScope) return;
@@ -2049,11 +2284,14 @@
   const HOVER_DELAY_MS = 400;
   let hoverTimer = null;
 
-  function showInfoPine(partIndex, event) {
+  function showInfoPine(partIndex, chipEl) {
     if (editingChip) return;
     const info = segmentForPinePart(partIndex);
     if (!info) return;
-    const rect = event.currentTarget.getBoundingClientRect();
+    // Anchor to the hovered chip, not the editor container. Under event
+    // delegation the listener's ``currentTarget`` is the whole (tall) editor
+    // div, which would pin the card to the top of the screen.
+    const rect = chipEl.getBoundingClientRect();
     const payload = buildHoverPayload(rect, info);
     if (hoverTimer) clearTimeout(hoverTimer);
     hoverTimer = setTimeout(() => {
@@ -2273,7 +2511,20 @@
     </section>
     <div class="pane-divider"></div>
     <section class="pane">
-      <div class="pane-label">Converted · Pine</div>
+      <div class="pane-label pane-label-row">
+        <span>Converted · Pine</span>
+        {#if !busy && llmSegments.length}
+          <button
+            class="verify-btn"
+            onclick={openVerifyAll}
+            onmouseenter={() => (highlightVerifiable = true)}
+            onmouseleave={() => (highlightVerifiable = false)}
+            title="Save all LLM-suggested mappings as verified suggestions"
+          >
+            ✓ Verify {llmSegments.length} suggestion{llmSegments.length === 1 ? "" : "s"}
+          </button>
+        {/if}
+      </div>
       {#if busy}
         <div class="progress-bar" role="progressbar" aria-label="Converting"></div>
       {/if}
@@ -2322,25 +2573,8 @@
     </section>
   </main>
 
-  <!-- ── Floating chip editor ─────────────────────────────────
-       Clicking a Pine chip in the editor opens this; editing the full
-       @[…] token commits through the suggestion / CreateVar-learn paths. -->
-  {#if editingChip}
-    <!-- svelte-ignore a11y_autofocus -->
-    <div class="chip-editor" style="left: {editingChip.x}px; top: {editingChip.y}px;">
-      <input
-        class="chip-editor-input mono"
-        value={editingChip.text}
-        spellcheck="false"
-        autofocus
-        onkeydown={(e) => {
-          if (e.key === "Enter") { e.preventDefault(); commitChipEditor(e.currentTarget.value); }
-          else if (e.key === "Escape") { e.preventDefault(); editingChip = null; }
-        }}
-        onblur={(e) => commitChipEditor(e.currentTarget.value)}
-      />
-    </div>
-  {/if}
+  <!-- Pine chips are edited in place inside the contenteditable (caret lands
+       between the brackets); there is no separate edit popup. -->
 
   <!-- ── Hover info card ─────────────────────────────────── -->
   {#if hoverInfo}
@@ -2386,14 +2620,21 @@
       {/if}
       {#if editingChip}
         <div class="info-row info-actions">
-          <!-- mousedown + preventDefault so clicking this doesn't blur
-               the contenteditable (which would commit an edit) before
-               the delete lands. -->
+          <!-- mousedown + preventDefault so clicking these doesn't blur the
+               contenteditable (which would commit an edit) before the action
+               lands. -->
           <button
             class="info-delete-btn"
             onmousedown={(e) => { e.preventDefault(); deletePineVar(editingChip.partIndex); }}
             title="Remove this Pine variable from the document"
           >✕ Delete</button>
+          {#if hoverInfo.segment?.jda_tokens?.length && hoverInfo.segment?.pine_tokens?.length && hoverInfo.segment.provenance !== "suggestion" && hoverInfo.editState?.status !== "saved"}
+            <button
+              class="info-verify-btn"
+              onmousedown={(e) => { e.preventDefault(); verifyChip(editingChip.partIndex); }}
+              title="Save this mapping as a verified suggestion"
+            >✓ Verify</button>
+          {/if}
         </div>
       {/if}
     </div>
@@ -2427,7 +2668,7 @@
         <h3 class="add-title">Add a Pine variable</h3>
         <p class="add-sub">
           Inserts at the cursor and ties it to a legacy variable. Also saved
-          as a <strong>{defaultScope()?.kind}</strong> suggestion so the same
+          as a <strong>{scopeKindLabel(defaultScope()?.kind)}</strong> suggestion so the same
           mapping applies on future conversions.
         </p>
 
@@ -2473,6 +2714,36 @@
           <button class="btn-ghost" onclick={cancelAddVar} disabled={addingVar.status === "saving"}>Cancel</button>
           <button class="btn-primary" onclick={confirmAddVar} disabled={addingVar.status === "saving"}>
             {addingVar.status === "saving" ? "Saving…" : "Add mapping"}
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- ── Verify-all confirmation ──────────────────────────── -->
+  {#if verifyOpen}
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+    <div class="modal-backdrop" onclick={() => { if (!verifying) verifyOpen = false; }}>
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+      <div class="add-modal" onclick={(e) => e.stopPropagation()}>
+        <h3 class="add-title">Verify suggestions?</h3>
+        <p class="add-sub">
+          Save all <strong>{llmSegments.length}</strong> LLM-suggested
+          mapping{llmSegments.length === 1 ? "" : "s"} as verified
+          {#if defaultScope()?.kind === "global"}
+            <strong>agency</strong> suggestions (apply across this agency).
+          {:else}
+            <strong>{defaultScope()?.kind}</strong> suggestions for <strong>{defaultScope()?.value}</strong>.
+          {/if}
+          They re-apply automatically on future conversions.
+        </p>
+        {#if verifyError}
+          <div class="add-error">⚠ {verifyError}</div>
+        {/if}
+        <div class="add-actions">
+          <button class="btn-ghost" onclick={() => (verifyOpen = false)} disabled={verifying}>Cancel</button>
+          <button class="btn-primary" onclick={confirmVerifyAll} disabled={verifying}>
+            {verifying ? "Verifying…" : `Verify ${llmSegments.length}`}
           </button>
         </div>
       </div>
@@ -2743,6 +3014,28 @@
     text-transform: uppercase;
     color: #6b7488;
   }
+  .pane-label-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  /* "Verify N suggestions" — accept all LLM-suggested mappings at once. */
+  .verify-btn {
+    font-family: "Inter", system-ui, sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    text-transform: none;
+    color: #5eead4;
+    background: rgba(94, 234, 212, 0.10);
+    border: 1px solid rgba(94, 234, 212, 0.30);
+    border-radius: 6px;
+    padding: 4px 11px;
+    cursor: pointer;
+    transition: background 0.1s, border-color 0.1s;
+  }
+  .verify-btn:hover { background: rgba(94, 234, 212, 0.20); border-color: rgba(94, 234, 212, 0.5); }
   .pane-stage {
     flex: 1;
     overflow-y: auto;
@@ -2957,40 +3250,50 @@
     background: rgba(94, 234, 212, 0.28);
     cursor: pointer;
   }
-  :global(.pine-editor .token-pine:hover) {
-    background: rgba(94, 234, 212, 0.42);
-    color: #115e59;
-  }
-  :global(.pine-editor .token-legacy) {
-    color: #9a3412;
-    background: rgba(251, 146, 60, 0.20);
-  }
-  :global(.pine-editor .token-pine.edited) {
-    color: #92400e;
-    background: rgba(251, 191, 36, 0.32);
+  /* Verified / saved mappings are green; LLM suggestions, prelude CreateVars
+     and added chips keep the base teal. In-flight save states and the verify
+     hover-preview layer on top. */
+  :global(.pine-editor .token-pine.verified) {
+    color: #15803d;
+    background: rgba(34, 197, 94, 0.22);
   }
   :global(.pine-editor .token-pine.saving) {
     color: #b08512;
-    background: rgba(252, 211, 77, 0.24);
+    background: rgba(252, 211, 77, 0.30);
   }
   :global(.pine-editor .token-pine.save-error) {
     color: #b91c1c;
     background: rgba(248, 113, 113, 0.24);
   }
-  .chip-editor {
-    position: fixed;
-    z-index: 90;
+  /* Hover-preview of the "Verify N suggestions" button — amber, on top. */
+  :global(.pine-editor .token-pine.will-verify) {
+    background: rgba(251, 191, 36, 0.30);
+    box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.65);
+    color: #92400e;
   }
-  .chip-editor-input {
-    min-width: 240px;
-    padding: 6px 9px;
-    border-radius: 6px;
-    background: #11121a;
-    border: 1px solid #5eead4;
-    color: #5eead4;
-    font-size: 12px;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+  /* Color-agnostic hover cue (a thin ring) so it works for any chip color. */
+  :global(.pine-editor .token-pine:hover) {
+    box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.28);
+  }
+  :global(.pine-editor .token-legacy) {
+    color: #9a3412;
+    background: rgba(251, 146, 60, 0.20);
+  }
+  /* In-place chip editing: brackets are dimmed, non-selectable guards; the
+     editable middle flows inline; the active chip gets a ring via
+     :focus-within (the inner span holds focus while editing). */
+  :global(.pine-editor .chip-bracket) {
+    user-select: none;
+    opacity: 0.55;
+  }
+  :global(.pine-editor .chip-inner) {
     outline: none;
+    caret-color: #0f766e;
+  }
+  :global(.pine-editor .chip-inner:empty) { min-width: 4px; }
+  :global(.pine-editor .token-pine:focus-within) {
+    outline: 1px solid #14b8a6;
+    outline-offset: 1px;
   }
   /* Cyan-tinted selection on the paper — matches the app accent and
    * reads cleanly against the warm white background. */
@@ -3161,8 +3464,8 @@
     word-break: break-word;
     white-space: normal;
   }
-  .prov-suggestion { color: #5eead4; }
-  .prov-llm        { color: #c084fc; }
+  .prov-suggestion { color: #4ade80; }  /* verified — green (matches chips) */
+  .prov-llm        { color: #5eead4; }  /* LLM suggested — teal (base chip color) */
   .prov-unmatched  { color: #f87171; }
   .prov-edit       { color: #fbbf24; }
   .status-saved   { color: #fbbf24; }
@@ -3176,6 +3479,25 @@
     margin-top: 6px;
     padding-top: 8px;
     border-top: 1px solid #2a2d3a;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .info-verify-btn {
+    appearance: none;
+    background: rgba(94, 234, 212, 0.12);
+    color: #5eead4;
+    border: 1px solid rgba(94, 234, 212, 0.4);
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .info-verify-btn:hover {
+    background: rgba(94, 234, 212, 0.22);
+    border-color: rgba(94, 234, 212, 0.6);
   }
   .info-delete-btn {
     appearance: none;

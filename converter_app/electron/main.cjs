@@ -103,10 +103,13 @@ function pipelineEnv() {
   const env = { ...process.env };
   if (s.api_key) env.OPENAI_API_KEY = s.api_key;
   if (s.model) env.OPENAI_MODEL = s.model;
-  // In packaged mode, suggestions must live outside the read-only bundle.
-  // Point the sidecar at a writable userData directory.
+  // In packaged mode, user data (saved mappings + agencies) must live outside
+  // the read-only app bundle so it's writable AND survives reinstalls/updates
+  // — userData is never part of the installer payload. No agency configs are
+  // bundled, so a fresh install starts with an empty agency list.
   if (app.isPackaged) {
     env.JDA_SUGGESTIONS_DIR = path.join(app.getPath("userData"), "suggestions");
+    env.JDA_AGENCY_DIR = path.join(app.getPath("userData"), "agencies");
   }
   return env;
 }
