@@ -17,8 +17,9 @@ This is a port of the v1 logic in ``Agent/src/nodes.py`` with two changes:
 The walk is carefully written to skip RTF control words inside the
 brackets (``\\par``, ``\\fcs1``, hex escapes ``\\'27``, etc.). RTF
 sometimes splits a single ``%[`` across two formatting runs:
-``%}{...\n[`` — a small pre-pass collapses these back to ``%[`` so
-the bracket scanner sees a contiguous opener.
+``%}{<control words>[`` — the ``%`` ends one run and the ``[`` lives
+somewhere in the next. A small pre-pass collapses these back to ``%[``
+so the bracket scanner sees a contiguous opener.
 """
 
 from __future__ import annotations
@@ -29,10 +30,15 @@ from typing import Iterator, Literal, Optional
 
 from . import jda_parser, pine_parser
 
-# Pre-pass: collapse RTF-fragmented "%[" openers. RTF can emit
-# ``%}{\rtlch\foo\loch\f1 \n[Token]}`` where the runs split between
-# ``%`` and ``[``. After collapse: ``%[Token]``.
-_FRAGMENTED_OPENER = re.compile(r"%\}(?:\{[^\[\]]*?\n)(?=\[)")
+# Pre-pass: collapse RTF-fragmented "%[" openers. RTF splits a single
+# ``%[`` between two formatting runs as ``%}{<run>[`` — the ``%`` ends
+# one run and the ``[`` lives in the next. The intervening run is an
+# arbitrary string of control words (``\rtlch\f1\fs16 ...``) and may or
+# may not contain a newline, with the ``[`` anywhere inside it — not
+# necessarily right after a ``\n`` (see template ``219 - Plea
+# Deadline.rtf``). We match ``%}`` + ``{`` + any non-bracket run up to
+# the first ``[`` and collapse the whole span back to ``%[``.
+_FRAGMENTED_OPENER = re.compile(r"%\}\{[^\[\]]*?(?=\[)")
 
 
 def _normalize_rtf(rtf: str) -> str:
