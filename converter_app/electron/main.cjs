@@ -236,6 +236,19 @@ function createWindow() {
 // IPC handlers
 // ─────────────────────────────────────────────────────────────────────
 
+// Word splits a single ``%[`` fillpoint opener across two formatting
+// runs as ``%}{<control words>[`` — the ``%`` ends one run and the
+// ``[`` lives in the next. The renderer's tokenizer only recognises a
+// contiguous ``%[``, so without stitching these the legacy pane shows
+// fragmented fillpoints as plain prose (un-highlighted) until Convert
+// runs. Mirror of ``normalize_rtf`` in
+// ``pipeline/parser/rtf_extractor.py`` (the single source of truth —
+// keep the pattern in sync) so the open-time stub matches what
+// ``convert.py`` emits as ``source.rtf``. Idempotent.
+function normalizeRtf(rtf) {
+  return rtf.replace(/%\}\{[^\[\]]*?(?=\[)/g, "%");
+}
+
 ipcMain.handle("openRtf", async () => {
   const result = await dialog.showOpenDialog({
     title: "Open JDA RTF",
@@ -247,7 +260,7 @@ ipcMain.handle("openRtf", async () => {
   });
   if (result.canceled || result.filePaths.length === 0) return null;
   const filePath = result.filePaths[0];
-  const rtf = fs.readFileSync(filePath, "utf-8");
+  const rtf = normalizeRtf(fs.readFileSync(filePath, "utf-8"));
   return { path: filePath, rtf };
 });
 
