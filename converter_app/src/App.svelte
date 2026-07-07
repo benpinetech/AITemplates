@@ -6,6 +6,7 @@
 
   import SettingsDialog  from "./SettingsDialog.svelte";
   import MappingsDialog  from "./MappingsDialog.svelte";
+  import BatchDialog     from "./BatchDialog.svelte";
   import AgenciesDialog  from "./AgenciesDialog.svelte";
   import HelpDialog      from "./HelpDialog.svelte";
 
@@ -28,6 +29,8 @@
   let settingsOpen  = $state(false);
   /** @type {boolean} Mappings dialog open flag. */
   let mappingsOpen  = $state(false);
+
+  let batchOpen     = $state(false);
   /** @type {boolean} Help dialog open flag. */
   let helpOpen      = $state(false);
 
@@ -2414,6 +2417,13 @@
 
     <!-- Right: mappings + file context + model -->
     <div class="toolbar-right">
+      <button class="btn-icon" onclick={() => (batchOpen = true)} title="Batch convert a folder">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+        </svg>
+        Batch
+      </button>
+      <span class="btn-sep"></span>
       <button class="btn-icon" onclick={() => (mappingsOpen = true)} title="Saved mappings">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <rect x="3" y="3" width="18" height="18" rx="2"/>
@@ -2764,6 +2774,7 @@
 
   <SettingsDialog bind:open={settingsOpen} onSaved={onSettingsSaved} />
   <MappingsDialog bind:open={mappingsOpen} agency={selectedAgency} />
+  <BatchDialog    bind:open={batchOpen} agency={selectedAgency} />
   <AgenciesDialog bind:open={agenciesOpen} selected={selectedAgency} onchange={onAgenciesChanged} />
   <HelpDialog     bind:open={helpOpen} />
 </div>

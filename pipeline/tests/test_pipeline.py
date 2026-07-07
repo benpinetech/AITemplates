@@ -17,6 +17,7 @@ from pipeline import pipeline
 from pipeline.engine.llm_converter import LlmConverter, MockLlmClient
 from pipeline.grammar.loaders import load_agency_overrides
 from pipeline.parser import pine_parser
+from pipeline.patterns.schema import Pattern
 @pytest.fixture(scope="module")
 def library():
     return []
@@ -32,6 +33,21 @@ class TestSingleToken:
         # for the mapper to see.
         assert "%[Mystery(thing)]" in result.converted_rtf
         assert result.segments[0].provenance == pipeline.PROV_UNMATCHED
+
+
+# ─── explicit drop patterns ───────────────────────────────────────────────
+
+class TestDropPattern:
+    def test_empty_rewrite_drops_the_token(self, library):
+        # A verified suggestion with rewrite=[] means "consume this token,
+        # emit nothing" — the segment matches (not unmatched) and the JDA
+        # text is removed from the output.
+        drop = Pattern(id="drop_x", description="", match="%[Cust_Junk]", rewrite=[])
+        rtf = "Keep %[Cust_Junk] this."
+        result = pipeline.convert_template(rtf, agency="any", library=[drop])
+        assert "%[Cust_Junk]" not in result.converted_rtf
+        assert result.segments[0].provenance == pipeline.PROV_SUGGESTION
+        assert result.segments[0].pine_outputs == ()
 
 
 # ─── LLM fallback wiring ──────────────────────────────────────────────────

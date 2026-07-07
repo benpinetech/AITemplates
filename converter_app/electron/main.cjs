@@ -271,6 +271,58 @@ ipcMain.handle("convertRtf", async (_evt, args = {}) => {
   return runPipeline(rtfPath, agency);
 });
 
+// Pick a folder (batch input / output). Returns { path } or null if
+// cancelled. ``createDirectory`` lets the user make a fresh output
+// folder from the dialog.
+ipcMain.handle("pickFolder", async (_evt, args = {}) => {
+  const result = await dialog.showOpenDialog({
+    title: (args && args.title) || "Select Folder",
+    properties: ["openDirectory", "createDirectory"],
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  return { path: result.filePaths[0] };
+});
+
+// Batch phase 1: scan an input folder → deduplicated unique-mapping
+// table. See pipeline/tools/batch.py (schema jda-pine-batch-collect/v1).
+ipcMain.handle("batchCollect", async (_evt, args = {}) => {
+  const { inputDir, agency, useLlm } = args;
+  if (!inputDir) return { error: "batchCollect: missing 'inputDir'" };
+  if (!agency) return { error: "batchCollect: missing 'agency'" };
+  return runBatch("collect", {
+    input_dir: inputDir,
+    agency,
+    use_llm: useLlm !== false,
+  }, _evt.sender);
+});
+
+// Cancel the in-flight batch (collect or apply) by killing its child.
+// Resolves { ok: true } if something was running, { ok: false } if not.
+ipcMain.handle("batchCancel", async () => {
+  if (activeBatchChild) {
+    activeBatchCancelled = true;
+    try { activeBatchChild.kill(); } catch { /* already gone */ }
+    return { ok: true };
+  }
+  return { ok: false };
+});
+
+// Batch phase 2: apply the confirmed mappings and write outputs. See
+// pipeline/tools/batch.py (schema jda-pine-batch-apply/v1).
+ipcMain.handle("batchApply", async (_evt, args = {}) => {
+  const { inputDir, outputDir, agency, mappings, persist } = args;
+  if (!inputDir) return { error: "batchApply: missing 'inputDir'" };
+  if (!outputDir) return { error: "batchApply: missing 'outputDir'" };
+  if (!agency) return { error: "batchApply: missing 'agency'" };
+  return runBatch("apply", {
+    input_dir: inputDir,
+    output_dir: outputDir,
+    agency,
+    mappings: mappings || [],
+    persist: !!persist,
+  }, _evt.sender);
+});
+
 ipcMain.handle("getSettings", async () => {
   const s = readSettings();
   return {
@@ -440,6 +492,105 @@ function runPipeline(rtfPath, agency) {
         ));
       }
     });
+  });
+}
+
+/**
+ * Spawn the batch tool for one phase ("collect" | "apply"), writing the
+ * request object as JSON to the child's stdin and resolving with the
+ * JSON bundle it prints to stdout. Always resolves; ``{ error }`` on any
+ * spawn/exit/parse failure. Stdin (not argv) carries the payload because
+ * a confirmed-mapping table can be hundreds of entries — well past the
+ * OS argv length limit.
+ */
+// The currently-running batch child (batches are modal — at most one at
+// a time). ``batchCancel`` kills it; the ``cancelled`` flag lets the
+// close handler resolve cleanly instead of surfacing a spurious error.
+let activeBatchChild = null;
+let activeBatchCancelled = false;
+
+function runBatch(phase, request, sender) {
+  const usePackagedSidecar = app.isPackaged;
+  const cmd = usePackagedSidecar ? SIDECAR_PATH : VENV_PYTHON;
+  const args = usePackagedSidecar
+    ? ["batch", phase]
+    : ["-m", "pipeline.tools.batch", phase];
+  return new Promise((resolve) => {
+    if (!usePackagedSidecar && !fs.existsSync(VENV_PYTHON)) {
+      resolve({ error: `Dev mode needs the project venv at ${VENV_PYTHON}` });
+      return;
+    }
+    const cwd = usePackagedSidecar ? path.dirname(cmd) : REPO_ROOT;
+    let child;
+    try {
+      child = spawn(cmd, args, { cwd, env: pipelineEnv() });
+    } catch (e) {
+      resolve({ error: `spawn failed: ${e.message}` });
+      return;
+    }
+    activeBatchChild = child;
+    activeBatchCancelled = false;
+
+    // The batch tool speaks NDJSON on stdout: zero or more
+    // ``{kind:"progress"}`` lines followed by one ``{kind:"result"}``
+    // line. Progress lines are forwarded to the renderer live; the
+    // result line is the resolved value. A data chunk can split a line,
+    // so buffer and split on newlines.
+    let buf = "";
+    let bundle = null;
+    let stderr = "";
+    child.stdout.on("data", (d) => {
+      buf += d.toString("utf-8");
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+        let msg;
+        try { msg = JSON.parse(line); } catch { continue; }
+        if (msg.kind === "progress") {
+          if (sender && !sender.isDestroyed()) sender.send("batch-progress", msg);
+        } else if (msg.kind === "result") {
+          bundle = msg.bundle;
+        }
+      }
+    });
+    child.stderr.on("data", (d) => {
+      const s = d.toString("utf-8");
+      stderr += s;
+      // Forward batch diagnostics (LLM on/off, per-row persist failures)
+      // to the dev terminal, same as the single-file convert path.
+      if (isDev) process.stderr.write(`[batch.py] ${s}`);
+    });
+    child.on("error", (e) => {
+      activeBatchChild = null;
+      resolve({ error: `spawn failed: ${e.message}` });
+    });
+    child.on("close", (code) => {
+      activeBatchChild = null;
+      if (activeBatchCancelled) { resolve({ cancelled: true }); return; }
+      if (code !== 0) {
+        resolve({
+          error: `batch ${phase} exited ${code}` +
+                 (stderr ? `:\n${stderr.trim()}` : ""),
+        });
+        return;
+      }
+      if (bundle == null) {
+        resolve({
+          error: `batch ${phase} produced no result` +
+                 (stderr ? `\nstderr: ${stderr.trim()}` : ""),
+        });
+        return;
+      }
+      resolve(bundle);
+    });
+    try {
+      child.stdin.write(JSON.stringify(request));
+      child.stdin.end();
+    } catch (e) {
+      resolve({ error: `batch stdin write failed: ${e.message}` });
+    }
   });
 }
 

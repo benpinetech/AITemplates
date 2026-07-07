@@ -4,6 +4,7 @@ Single entry point for the PyInstaller sidecar binary.
 Usage: jda_pine_sidecar <tool> [args...]
 
   convert            -- run pipeline/tools/convert.py
+  batch              -- run pipeline/tools/batch.py (collect | apply)
   persist_suggestion -- run pipeline/tools/persist_suggestion.py
   manage_suggestions -- run pipeline/tools/manage_suggestions.py
   update_prelude     -- run pipeline/tools/update_prelude.py
@@ -30,6 +31,9 @@ def main() -> None:
 
     if tool == "convert":
         from pipeline.tools.convert import main as _main
+        sys.exit(_main() or 0)
+    elif tool == "batch":
+        from pipeline.tools.batch import main as _main
         sys.exit(_main() or 0)
     elif tool == "persist_suggestion":
         from pipeline.tools.persist_suggestion import main as _main

@@ -35,6 +35,56 @@ contextBridge.exposeInMainWorld("api", {
   saveRtf: (args) => ipcRenderer.invoke("saveRtf", args),
 
   /**
+   * Show a folder picker (batch input / output selection).
+   * @param {{ title?: string }} args
+   * @returns {Promise<{ path: string } | null>}  null if user cancelled
+   */
+  pickFolder: (args) => ipcRenderer.invoke("pickFolder", args),
+
+  /**
+   * Batch phase 1 — scan an input folder and return the deduplicated
+   * unique-mapping table (schema jda-pine-batch-collect/v1). ``useLlm``
+   * defaults to true; the LLM is consulted once per DISTINCT token.
+   * @param {{ inputDir: string, agency: string, useLlm?: boolean }} args
+   * @returns {Promise<object | { error: string }>}
+   */
+  batchCollect: (args) => ipcRenderer.invoke("batchCollect", args),
+
+  /**
+   * Batch phase 2 — apply the confirmed mappings to every file in the
+   * input folder and write the Pine outputs to ``outputDir`` (schema
+   * jda-pine-batch-apply/v1). ``persist`` also saves the mappings as
+   * agency-scoped verified suggestions for reuse.
+   * @param {{
+   *   inputDir: string, outputDir: string, agency: string,
+   *   mappings: Array<{ jda: string, pine_tokens: string[] }>,
+   *   persist?: boolean,
+   * }} args
+   * @returns {Promise<object | { error: string }>}
+   */
+  batchApply: (args) => ipcRenderer.invoke("batchApply", args),
+
+  /**
+   * Cancel the in-flight batch (collect or apply). The pending
+   * batchCollect/batchApply promise then resolves with { cancelled: true }.
+   * @returns {Promise<{ ok: boolean }>}
+   */
+  batchCancel: () => ipcRenderer.invoke("batchCancel"),
+
+  /**
+   * Subscribe to live batch progress events
+   * (``{ kind, phase, done, total, label }``). Returns an unsubscribe
+   * function — call it when the batch UI unmounts.
+   * @param {(e: { phase: string, done: number, total: number, label: string }) => void} cb
+   * @returns {() => void}
+   */
+  onBatchProgress: (cb) => {
+    const handler = (_e, data) => cb(data);
+    ipcRenderer.on("batch-progress", handler);
+    return () => ipcRenderer.removeListener("batch-progress", handler);
+  },
+
+  /**
    * Write an RTF directly to a known path without showing a dialog.
    * @param {{ path: string, rtf: string }} args
    * @returns {Promise<{ path: string }>}

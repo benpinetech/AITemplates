@@ -352,14 +352,24 @@ def convert_template(
         jda_key = p.match if isinstance(p.match, str) else p.match[0]
         if jda_key in suggestion_lookup:
             continue
+        rw_tokens = p.rewrite_tokens() or []
+        if not rw_tokens:
+            # Explicit drop pattern (``rewrite = []``): consume the JDA
+            # token and emit nothing. Distinct from ``rewrite is None``
+            # (rewrite_function patterns), which is filtered above. The
+            # empty tuple flows through as a matched segment with no Pine
+            # output, so reconstruction removes the token.
+            suggestion_lookup[jda_key] = ()
+            continue
         pine_toks: List[PineToken] = []
-        for rw in (p.rewrite_tokens() or []):
+        ok = True
+        for rw in rw_tokens:
             try:
                 pine_toks.append(_parse_pine(rw))
             except Exception:  # noqa: BLE001
-                pine_toks = []
+                ok = False
                 break
-        if pine_toks:
+        if ok and pine_toks:
             suggestion_lookup[jda_key] = tuple(pine_toks)
 
     # 3. Walk every JDA token: suggestions fire first, the rest are
