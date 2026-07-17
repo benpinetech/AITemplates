@@ -1006,7 +1006,24 @@
   // Number of Pine chips at the start of the converted RTF that came
   // from the CreateVar prelude. These chips have no backing segment —
   // skip them when mapping a chip to its source.
-  let preludePineCount = $derived(result?.prelude_pine_token_count || 0);
+  //
+  // The conversion reports how many the generator emitted, but the converter
+  // can delete one while editing. Counting the leading CreateVar chips still
+  // present keeps the body boundary right, and being derived from the RTF it
+  // re-settles by itself across undo / redo / recovery. The reported count is
+  // the ceiling: a body chip that happens to be a CreateVar (learned via an
+  // inline edit) must not be mistaken for prelude.
+  let preludePineCount = $derived.by(() => {
+    const declared = result?.prelude_pine_token_count || 0;
+    if (!declared) return 0;
+    let n = 0;
+    for (const p of pineParts) {
+      if (p.kind !== "pine") continue;
+      if (n >= declared || !/^@\[\s*CreateVar\b/.test(p.text)) break;
+      n++;
+    }
+    return n;
+  });
 
   // Pre-walk pineParts / legacyParts so we can ask "what is the chip
   // index of the part at position i?" without re-walking on every
@@ -1063,12 +1080,38 @@
 
   // Post-prelude flat chip index for an RTF offset: how many body Pine
   // chips start before ``off``. Used to keep chipMap aligned with splices.
+  // Negative for an offset inside the prelude — those chips have no slot in
+  // chipMap, so callers must skip rather than clamp them onto body slot 0.
   function postPreludeIndexForOffset(off) {
     let pineBefore = 0;
     for (const p of pineParts) {
       if (p.kind === "pine" && p.start < off) pineBefore++;
     }
-    return Math.max(0, pineBefore - preludePineCount);
+    return pineBefore - preludePineCount;
+  }
+
+  /**
+   * Re-align ``chipMap`` for an RTF splice that replaces [rtfStart, rtfEnd)
+   * with ``insertedText``.
+   *
+   * Prose editing is structural: a selection dragged over a fillpoint and
+   * deleted drops a chip, a paste can add one. Every later chip's slot shifts
+   * with it, so without this the identity mapping silently drifts and each
+   * chip reports its *neighbour's* legacy source.
+   */
+  function remapChipsForSplice(rtfStart, rtfEnd, insertedText) {
+    const body = pineParts.filter((p) => p.kind === "pine").slice(preludePineCount);
+    // A chip overlapping the replaced span is gone (or mangled past being a
+    // chip); one wholly before or after it keeps its slot. A pure insertion
+    // (rtfStart === rtfEnd) overlaps nothing — chip offsets are half-open.
+    const removed = body.filter((p) => p.start < rtfEnd && p.end > rtfStart).length;
+    const added = tokenize(insertedText).filter((p) => p.kind === "pine").length;
+    if (!removed && !added) return;
+    const at = body.filter((p) => p.end <= rtfStart).length;
+    const m = materializeChipMap();
+    // Inserted chips are new fill-points with no backing segment (null).
+    m.splice(at, removed, ...Array.from({ length: added }, () => null));
+    chipMap = m;
   }
 
   // Distinct legacy (JDA) tokens present in this document, in first-seen
@@ -1276,6 +1319,19 @@
     pineDisplay = { text: d.text, map: d.map };
   }
 
+  /** A pine part's middle text — what buildPineEditor renders between the
+   *  ``@[`` / ``]`` guards. */
+  function partInnerText(part) {
+    const m = part.text.match(/^@\[([\s\S]*)\]$/);
+    return m ? m[1] : part.text.replace(/^@\[/, "").replace(/\]$/, "");
+  }
+
+  /** A chip's middle text as it currently stands in the DOM (null if gone). */
+  function chipInnerText(partIdx) {
+    const el = pineEditorEl?.querySelector(`[data-part-idx="${partIdx}"] .chip-inner`);
+    return el ? el.textContent : null;
+  }
+
   function makeChipSpan(part, pi) {
     const span = document.createElement("span");
     span.contentEditable = "false";
@@ -1293,8 +1349,7 @@
       // Edit in place: the ``@[`` / ``]`` delimiters are non-editable guards
       // around a nested-editable middle so the caret lands between the
       // brackets and the user can't accidentally delete them.
-      const m = part.text.match(/^@\[([\s\S]*)\]$/);
-      const innerText = m ? m[1] : part.text.replace(/^@\[/, "").replace(/\]$/, "");
+      const innerText = partInnerText(part);
       const lb = document.createElement("span");
       lb.className = "chip-bracket"; lb.contentEditable = "false"; lb.textContent = "@[";
       const inner = document.createElement("span");
@@ -1355,6 +1410,25 @@
     // Empty paragraphs need a <br> so they have height and a caret target.
     el.querySelectorAll("p").forEach((p) => { if (!p.firstChild) p.appendChild(document.createElement("br")); });
     repaginatePine();
+  }
+
+  /**
+   * Re-stamp every chip's ``data-part-idx`` from the current parts.
+   *
+   * A prose sync splices the RTF but deliberately does NOT rebuild the DOM, so
+   * the caret survives. That leaves each chip span naming the part index it had
+   * at build time, and an edit that adds or drops a part shifts all the later
+   * ones — hover / edit / delete would then resolve a chip to its *neighbour's*
+   * segment. The DOM matches the RTF right after a sync, so chip spans and
+   * pine|legacy parts line up 1:1 in document order and can simply be re-paired.
+   */
+  function restampPartIdx() {
+    if (!pineEditorEl) return;
+    const spans = pineEditorEl.querySelectorAll("[data-part-idx]");
+    const idxs = [];
+    pineParts.forEach((p, i) => { if (p.kind === "pine" || p.kind === "legacy") idxs.push(i); });
+    if (spans.length !== idxs.length) { bumpEditor(); return; }   // drifted — rebuild instead
+    spans.forEach((s, k) => { s.dataset.partIdx = String(idxs[k]); });
   }
 
   /** Serialize one block's inline content: text verbatim, chips as their
@@ -1442,10 +1516,14 @@
 
     undoStack = [...undoStack, { rtf, editedKeys: { ...editedKeys }, chipMap }];
     redoStack = [];
+    // Before the splice — ``pineParts`` still describes the pre-edit document.
+    remapChipsForSplice(rtfStart, rtfEnd, inserted);
     result.converted.rtf = rtf.slice(0, rtfStart) + textToRtf(inserted) + rtf.slice(rtfEnd);
     // The DOM already reflects the edit; refresh the display model so the
     // next diff is incremental — but DON'T rebuild the DOM (caret stays).
+    // The chips that survived now name shifted part indices, so re-pair them.
     recomputePineDisplay();
+    restampPartIdx();
     lastBuiltRtf = result.converted.rtf;   // keep the rebuild effect quiet
     // Page reflow is driven by the ResizeObserver on the editor — no need
     // to paginate here (avoids double work on every keystroke).
@@ -1570,6 +1648,38 @@
     bumpEditor();
   }
 
+  /** True when the selection sits inside the given chip (either guard bracket
+   *  or the editable middle). */
+  function selectionInChip(partIdx) {
+    const sel = window.getSelection();
+    const chip = pineEditorEl?.querySelector(`[data-part-idx="${partIdx}"]`);
+    if (!sel || !sel.anchorNode || !chip) return false;
+    return chip.contains(sel.anchorNode);
+  }
+
+  /** End the in-place edit because the caret left the chip — arrow keys /
+   *  Home / End walking out into the prose, or a mousedown elsewhere.
+   *
+   *  An untouched chip ends the session *in place*: no rebuild, so the caret
+   *  the user just moved survives and what they type next syncs as prose. A
+   *  rebuild here would both drop their caret and — because ``onEditorInput``
+   *  ignores input while ``editingChip`` is set — silently discard prose typed
+   *  after walking out of a chip. A touched chip still commits through the
+   *  normal path. */
+  function endInlineEdit() {
+    const ec = editingChip;
+    if (!ec) return;
+    const part = pineParts[ec.partIndex];
+    if (!part || chipInnerText(ec.partIndex) !== partInnerText(part)) { commitInlineEdit(); return; }
+    editingChip = null;
+    hoverInfo = null;
+    highlightedSegmentIndex = null;
+    // The caret is still somewhere in the editor whenever it merely walked out
+    // of the chip — keep the typing flag honest so the pending prose sync
+    // flushes on blur and the rebuild effect stays out of the way.
+    pineTyping = !!(pineEditorEl && pineEditorEl.contains(document.activeElement));
+  }
+
   /** Abandon an in-place edit (Escape): rebuild restores the original text. */
   function cancelInlineEdit() {
     if (!editingChip) return;
@@ -1580,9 +1690,10 @@
     bumpEditor();
   }
 
-  // While a chip is being edited in place, a mousedown anywhere outside that
-  // chip and its info card commits and dismisses (clicking onto prose, the
-  // canvas, another chip, or the toolbar). The Delete button uses
+  // While a chip is being edited in place, the edit ends as soon as the caret
+  // leaves it — by mousedown outside the chip and its info card (clicking onto
+  // prose, the canvas, another chip, or the toolbar), or by the caret walking
+  // out with the arrow / Home / End keys. The Delete button uses
   // mousedown+preventDefault and lives in the card, so it's excluded here.
   $effect(() => {
     if (!editingChip) return;
@@ -1592,10 +1703,23 @@
       const chip = pineEditorEl?.querySelector(`[data-part-idx="${partIdx}"]`);
       if (chip && chip.contains(t)) return;
       if (t.closest?.(".info-card")) return;
-      commitInlineEdit();
+      endInlineEdit();
+    };
+    // Only start watching for the caret leaving once it has actually arrived:
+    // ``startInlineEdit`` focuses the middle in a microtask, so right after a
+    // click on a guard bracket the selection is legitimately still outside.
+    let arrived = selectionInChip(partIdx);
+    const onSelect = () => {
+      if (editingChip?.partIndex !== partIdx) return;
+      if (selectionInChip(partIdx)) { arrived = true; return; }
+      if (arrived) endInlineEdit();
     };
     document.addEventListener("mousedown", onDown, true);
-    return () => document.removeEventListener("mousedown", onDown, true);
+    document.addEventListener("selectionchange", onSelect);
+    return () => {
+      document.removeEventListener("mousedown", onDown, true);
+      document.removeEventListener("selectionchange", onSelect);
+    };
   });
 
   // Rebuild the editor DOM on external RTF changes (convert, undo/redo, chip
