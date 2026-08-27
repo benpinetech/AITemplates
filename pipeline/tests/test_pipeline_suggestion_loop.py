@@ -114,6 +114,56 @@ def test_reject_doesnt_persist_for_suggestion_matching(
     assert len(llm_calls) == 1
 
 
+# The canonical multi-token block: a legacy HisHer pronoun variable maps
+# to a full Pine gender conditional with literal pronoun text between the
+# control tokens. This does not fit the one-token-per-mapping model and is
+# carried verbatim (PineRawBlock) through save → load → apply.
+GENDER_BLOCK = (
+    "@[if('@[DefName.Gender]'=='M')]his"
+    "@[elseif('@[DefName.Gender]'=='F')]her"
+    "@[else]his/her@[endif]"
+)
+
+
+def test_multi_token_block_round_trips(fresh_suggestions_root, oba):
+    """A converter-added multi-token block (the gender-pronoun if/elseif/
+    else/endif) saves, loads, and re-applies verbatim on a later run —
+    the value the HITL cache is meant to accumulate."""
+    from pipeline.parser.pine_ast import PineRawBlock
+
+    legacy = "%[Cust_Atty_Def_Active2.HisHer]"
+    rtf = f"The Defendant shall pay {legacy} fees."
+
+    # Save the block as a verified suggestion (previously rejected with
+    # "refusing to cache unparseable Pine output").
+    suggestion_store.accept_suggestion(
+        legacy, GENDER_BLOCK, agency="oba", root=fresh_suggestions_root,
+    )
+
+    # It survives the load-time parseability filter.
+    loaded = suggestion_store.load_verified_for_agency(
+        "oba", root=fresh_suggestions_root,
+    )
+    assert [p.rewrite_tokens() for p in loaded if legacy in p.match_tokens()] == [
+        [GENDER_BLOCK]
+    ]
+
+    # And it applies deterministically: no LLM converter passed, so a
+    # match here can only come from the suggestion lookup.
+    result = pipeline.convert_template(
+        rtf, agency="oba", suggestions_root=fresh_suggestions_root,
+    )
+    seg = next(s for s in result.segments if s.source_jda_tokens)
+    assert seg.provenance == pipeline.PROV_SUGGESTION
+    assert len(seg.pine_outputs) == 1
+    out = seg.pine_outputs[0]
+    assert isinstance(out, PineRawBlock)
+    # Verbatim: literal pronoun glue between tokens is preserved exactly.
+    assert out.unparse() == GENDER_BLOCK
+    assert GENDER_BLOCK in result.converted_rtf
+    assert legacy not in result.converted_rtf
+
+
 def test_pipeline_loads_default_suggestions_root_when_unspecified(
     oba, monkeypatch, tmp_path,
 ):

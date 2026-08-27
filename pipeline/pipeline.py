@@ -344,7 +344,12 @@ def convert_template(
     #    library (patterns with no holes and a single-token match).
     #    These are user-accepted HITL mappings and apply deterministically
     #    — the LLM is only called for tokens not covered here.
-    from .parser.pine_parser import parse as _parse_pine
+    from .parser.pine_parser import (
+        parse as _parse_pine,
+        parse_fragment as _parse_fragment,
+        is_single_token as _is_single_token,
+    )
+    from .parser.pine_ast import PineRawBlock
     suggestion_lookup: dict = {}
     for p in library:
         if p.holes or p.is_chunk_pattern() or p.rewrite is None:
@@ -365,7 +370,16 @@ def convert_template(
         ok = True
         for rw in rw_tokens:
             try:
-                pine_toks.append(_parse_pine(rw))
+                if _is_single_token(rw):
+                    pine_toks.append(_parse_pine(rw))
+                else:
+                    # Multi-token block (or bare text mixed with tokens):
+                    # validate every inner ``@[...]`` then carry it
+                    # verbatim so the literal glue survives reconstruction.
+                    # Keep the parsed sub-tokens so the prelude can derive
+                    # CreateVar declarations from entities inside the block.
+                    frag = _parse_fragment(rw)
+                    pine_toks.append(PineRawBlock(text=rw.strip(), tokens=tuple(frag)))
             except Exception:  # noqa: BLE001
                 ok = False
                 break

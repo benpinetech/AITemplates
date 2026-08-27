@@ -80,6 +80,13 @@
   /** @type {null | { pineText: string, legacyToken: string, status: null|"saving"|"error", error: string }} */
   let addingVar = $state(null);
 
+  // A transient, non-blocking notice shown after an add-variable insert
+  // (e.g. "inserted but couldn't be saved for future conversions"). The
+  // insert itself always succeeds; this only reports the persist step.
+  /** @type {null | { text: string, kind: "info"|"warn" }} */
+  let addVarNotice = $state(null);
+  let addVarNoticeTimer = null;
+
   // Where a right-click chose to insert a new Pine var. ``rtfOffset`` is
   // the splice point in the converted RTF; x/y/height position the
   // visible insertion caret (viewport coords). Null when no point is set.
@@ -2300,6 +2307,63 @@
     };
   }
 
+  // Split a Pine fragment into its top-level ``@[...]`` token substrings.
+  // Mirrors the backend ``pine_parser.split_top_level_tokens`` so the UI
+  // gates on exactly what the store will accept: nested ``@[...]`` stays
+  // part of its token (bracket depth), literal text between tokens is
+  // ignored. ``unbalanced`` flags an ``@[`` that never closes.
+  function splitTopLevelTokens(s) {
+    const tokens = [];
+    let i = 0;
+    while (i < s.length) {
+      const start = s.indexOf("@[", i);
+      if (start < 0) break;
+      let depth = 1;
+      let pos = start + 2;
+      while (pos < s.length && depth > 0) {
+        const c = s[pos];
+        if (c === "[") depth++;
+        else if (c === "]") depth--;
+        pos++;
+      }
+      if (depth !== 0) return { tokens, unbalanced: true };
+      tokens.push(s.slice(start, pos));
+      i = pos;
+    }
+    return { tokens, unbalanced: false };
+  }
+
+  // Turn the converter's free-form text into the exact Pine that will be
+  // inserted, and flag anything that won't round-trip. Bare text with no
+  // ``@[`` is wrapped in ``@[…]`` as a convenience; anything already
+  // containing ``@[…]`` (a full variable or a multi-token block) is kept
+  // verbatim. Returns { chip, ok, warn, multi }.
+  function buildAddVarChip(text) {
+    const raw = (text || "").replace(/\s+/g, " ").trim();
+    if (!raw) return { chip: "", ok: false, warn: "", multi: false };
+    const chip = raw.includes("@[") ? raw : `@[${raw}]`;
+    const { tokens, unbalanced } = splitTopLevelTokens(chip);
+    if (unbalanced) return { chip, ok: false, warn: "Unbalanced @[ … ] — check your brackets.", multi: false };
+    if (tokens.length === 0) return { chip, ok: false, warn: "No @[ … ] variable found.", multi: false };
+    if (tokens.some((t) => t.slice(2, -1).trim() === ""))
+      return { chip, ok: false, warn: "Empty @[] — put a variable inside the brackets.", multi: false };
+    // Multi-token if there's more than one token or literal glue around it.
+    const multi = tokens.length > 1 || chip !== tokens[0];
+    return { chip, ok: true, warn: "", multi };
+  }
+
+  // Live preview of the chip that will be inserted, recomputed as the
+  // converter types.
+  let addVarPreview = $derived(
+    addingVar ? buildAddVarChip(addingVar.pineText) : { chip: "", ok: false, warn: "", multi: false }
+  );
+
+  function flashAddVarNotice(text, kind = "info") {
+    if (addVarNoticeTimer) clearTimeout(addVarNoticeTimer);
+    addVarNotice = { text, kind };
+    addVarNoticeTimer = setTimeout(() => { addVarNotice = null; addVarNoticeTimer = null; }, 6000);
+  }
+
   function cancelAddVar() {
     addingVar = null;
     insertAt = null;
@@ -2312,58 +2376,71 @@
   function confirmAddVar() {
     if (!addingVar || !insertAt) return;
     const legacy = (addingVar.legacyToken || "").trim();
-    const raw = (addingVar.pineText || "").trim();
+    const { chip, ok, warn } = buildAddVarChip(addingVar.pineText);
 
-    if (!legacy) {
-      addingVar = { ...addingVar, status: "error", error: "Pick a legacy variable to tie this to." };
+    if (!chip) {
+      addingVar = { ...addingVar, status: "error", error: "Enter the Pine variable or block." };
       return;
     }
-    if (!raw) {
-      addingVar = { ...addingVar, status: "error", error: "Enter the Pine variable text." };
-      return;
-    }
-    const effectiveScope = defaultScope();
-    if (!effectiveScope) {
-      addingVar = { ...addingVar, status: "error", error: "No scope available to save against." };
+    if (!ok) {
+      // Structural sanity only (balanced brackets, non-empty tokens) —
+      // this is the friendly guard that replaces the old backend
+      // "refusing to cache unparseable Pine output" hard failure.
+      addingVar = { ...addingVar, status: "error", error: warn || "That isn't valid Pine yet." };
       return;
     }
 
-    // Preserve a full ``@[...]`` verbatim; only wrap bare text.
-    const chip = /^@\[[\s\S]*\]$/.test(raw) ? raw : `@[${raw}]`;
+    // Insert into the CURRENT document first — this always succeeds for
+    // structurally-valid Pine, whether or not it can be persisted as a
+    // durable mapping. Decoupling insert from persist is what lets a
+    // converter drop in a multi-token block (or an untied one) without
+    // being blocked by the suggestion store.
     const off = insertAt.rtfOffset;
-    addingVar = { ...addingVar, status: "saving", error: "" };
-    const payload = {
-      agency: result.agency || selectedAgency,
-      scope: { kind: effectiveScope.kind, value: effectiveScope.value ?? "" },
-      jda_tokens: [legacy],
-      pine_tokens: [chip],
-      source_template: result.template_name,
-      note: `new mapping inserted via converter_app (scope=${effectiveScope.kind})`,
-    };
-    // Persist first; only splice into the document once the mapping is
-    // saved, so a persist failure leaves the form open to retry without
-    // inserting the chip twice.
-    window.api.persistEdit(payload).then((r) => {
-      if (r?.ok) {
-        undoStack = [...undoStack, { rtf: result.converted.rtf, editedKeys: { ...editedKeys }, chipMap }];
-        redoStack = [];
-        // Re-align the map: the new chip occupies a fresh slot with no
-        // backing segment (null) at its post-prelude position.
-        const m = materializeChipMap();
-        const p = postPreludeIndexForOffset(off);
-        m.splice(Math.min(Math.max(p, 0), m.length), 0, null);
-        chipMap = m;
-        const rtf = result.converted.rtf;
-        result.converted.rtf = rtf.slice(0, off) + chip + rtf.slice(off);
-        addingVar = null;
-        insertAt = null;
-        bumpEditor();   // rebuild the editor so the new chip renders
-      } else {
-        addingVar = { ...addingVar, status: "error", error: r?.error || "save failed" };
-      }
-    }).catch((e) => {
-      addingVar = { ...addingVar, status: "error", error: String(e?.message || e) };
-    });
+    undoStack = [...undoStack, { rtf: result.converted.rtf, editedKeys: { ...editedKeys }, chipMap }];
+    redoStack = [];
+    // Re-align the map: the new chip occupies a fresh slot with no
+    // backing segment (null) at its post-prelude position.
+    const m = materializeChipMap();
+    const p = postPreludeIndexForOffset(off);
+    m.splice(Math.min(Math.max(p, 0), m.length), 0, null);
+    chipMap = m;
+    const rtf = result.converted.rtf;
+    result.converted.rtf = rtf.slice(0, off) + chip + rtf.slice(off);
+    bumpEditor();   // rebuild the editor so the new chip renders
+
+    // Persist the legacy→Pine mapping as a scoped suggestion for future
+    // conversions — best-effort. Only when tied to a legacy variable; a
+    // brand-new block with no legacy counterpart is inserted but not
+    // cached (nothing to key the mapping on).
+    if (legacy) {
+      const effectiveScope = defaultScope();
+      const payload = {
+        agency: result.agency || selectedAgency,
+        scope: { kind: effectiveScope.kind, value: effectiveScope.value ?? "" },
+        jda_tokens: [legacy],
+        pine_tokens: [chip],
+        source_template: result.template_name,
+        note: `new mapping inserted via converter_app (scope=${effectiveScope.kind})`,
+      };
+      window.api.persistEdit(payload).then((r) => {
+        if (!r?.ok) {
+          flashAddVarNotice(
+            `Inserted, but couldn't save this mapping for future conversions: ${r?.error || "save failed"}`,
+            "warn"
+          );
+        }
+      }).catch((e) => {
+        flashAddVarNotice(
+          `Inserted, but couldn't save this mapping for future conversions: ${String(e?.message || e)}`,
+          "warn"
+        );
+      });
+    } else {
+      flashAddVarNotice("Inserted. Tie it to a legacy variable to also reuse it on future conversions.");
+    }
+
+    addingVar = null;
+    insertAt = null;
   }
 
   function editStateForPart(partIndex) {
@@ -2801,21 +2878,21 @@
       <div class="add-modal" onclick={(e) => e.stopPropagation()}>
         <h3 class="add-title">Add a Pine variable</h3>
         <p class="add-sub">
-          Inserts at the cursor and ties it to a legacy variable. Also saved
-          as a <strong>{scopeKindLabel(defaultScope()?.kind)}</strong> suggestion so the same
-          mapping applies on future conversions.
+          Type Pine exactly as it should appear at the cursor — a single
+          <code>@[…]</code> variable or a full multi-token block. Tie it to a
+          legacy variable to also save it as a
+          <strong>{scopeKindLabel(defaultScope()?.kind)}</strong> suggestion for future
+          conversions.
         </p>
 
         <label class="add-field">
-          <span class="add-label">Legacy variable</span>
+          <span class="add-label">Legacy variable <span class="add-optional">(optional)</span></span>
           <select
             class="add-input add-select mono"
             bind:value={addingVar.legacyToken}
             onkeydown={(e) => { if (e.key === "Escape") cancelAddVar(); }}
           >
-            {#if !legacyVarOptions.length}
-              <option value="" disabled>No legacy variables in this document</option>
-            {/if}
+            <option value="">— none (insert only, don't save a mapping) —</option>
             {#each legacyVarOptions as opt}
               <option value={opt}>{opt}</option>
             {/each}
@@ -2823,34 +2900,55 @@
         </label>
 
         <label class="add-field">
-          <span class="add-label">Pine variable</span>
-          <div class="add-pine-wrap">
-            <span class="add-bracket">@[</span>
-            <input
-              class="add-input mono add-pine-input"
-              placeholder="Complainant.first.NameFirst"
-              spellcheck="false"
-              bind:value={addingVar.pineText}
-              onkeydown={(e) => {
-                if (e.key === "Enter") { e.preventDefault(); confirmAddVar(); }
-                else if (e.key === "Escape") cancelAddVar();
-              }}
-            />
-            <span class="add-bracket">]</span>
-          </div>
+          <span class="add-label">Pine variable or block</span>
+          <textarea
+            class="add-input mono add-pine-area"
+            rows="3"
+            placeholder={"@[Complainant.first.NameFirst]\n\nor a full block, e.g.\n@[if('@[DefName.Gender]'=='M')]his@[elseif('@[DefName.Gender]'=='F')]her@[else]his/her@[endif]"}
+            spellcheck="false"
+            bind:value={addingVar.pineText}
+            onkeydown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); confirmAddVar(); }
+              else if (e.key === "Escape") cancelAddVar();
+            }}
+          ></textarea>
+          <p class="add-hint">
+            Bare text with no brackets is wrapped in <code>@[…]</code> for you.
+            <span class="add-hint-kbd">⌘/Ctrl + Enter</span> to insert.
+          </p>
         </label>
+
+        {#if addVarPreview.chip}
+          <div class="add-preview">
+            <div class="add-label">
+              Will insert
+              {#if addVarPreview.multi}<span class="add-badge">multi-token block</span>{/if}
+            </div>
+            <code class="add-preview-chip" class:invalid={!addVarPreview.ok}>{addVarPreview.chip}</code>
+          </div>
+        {/if}
 
         {#if addingVar.status === "error"}
           <div class="add-error">⚠ {addingVar.error}</div>
+        {:else if addVarPreview.warn}
+          <div class="add-error add-error-soft">⚠ {addVarPreview.warn}</div>
         {/if}
 
         <div class="add-actions">
-          <button class="btn-ghost" onclick={cancelAddVar} disabled={addingVar.status === "saving"}>Cancel</button>
-          <button class="btn-primary" onclick={confirmAddVar} disabled={addingVar.status === "saving"}>
-            {addingVar.status === "saving" ? "Saving…" : "Add mapping"}
+          <button class="btn-ghost" onclick={cancelAddVar}>Cancel</button>
+          <button class="btn-primary" onclick={confirmAddVar} disabled={!addVarPreview.ok}>
+            {addingVar.legacyToken ? "Insert & save mapping" : "Insert"}
           </button>
         </div>
       </div>
+    </div>
+  {/if}
+
+  <!-- ── Add-variable transient notice (insert succeeded, persist status) ── -->
+  {#if addVarNotice}
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+    <div class="add-toast" class:warn={addVarNotice.kind === "warn"} onclick={() => { addVarNotice = null; }}>
+      {addVarNotice.text}
     </div>
   {/if}
 
@@ -3678,7 +3776,13 @@
     color: #9ca3b8;
   }
   .add-sub strong { color: #5eead4; font-weight: 600; }
+  .add-sub code, .add-hint code {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    color: #5eead4;
+  }
   .add-field { display: block; margin-bottom: 14px; }
+  .add-optional { color: #6b7488; font-weight: 500; text-transform: none; letter-spacing: 0; }
   .add-label {
     display: block;
     margin-bottom: 5px;
@@ -3704,22 +3808,84 @@
   .add-input.mono { font-family: "JetBrains Mono", "SF Mono", monospace; }
   .add-select { cursor: pointer; }
   .add-select option { background: #0b0c12; color: #e6e8ef; }
-  .add-pine-wrap {
-    display: flex;
-    align-items: center;
-    gap: 4px;
+  .add-pine-area {
+    width: 100%;
+    resize: vertical;
+    min-height: 58px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-all;
   }
-  .add-pine-input { flex: 1 1 auto; }
-  .add-bracket {
-    color: #5eead4;
+  .add-hint {
+    margin: 6px 0 0;
+    font-size: 11px;
+    line-height: 1.5;
+    color: #6b7488;
+  }
+  .add-hint-kbd {
     font-family: "JetBrains Mono", monospace;
-    font-size: 13px;
-    font-weight: 600;
+    color: #9ca3b8;
+    background: #14161f;
+    border: 1px solid #2a2d3a;
+    border-radius: 3px;
+    padding: 0 4px;
+    margin-left: 2px;
   }
+  .add-preview {
+    margin: 0 0 12px;
+    padding: 8px 10px;
+    background: #0b0c12;
+    border: 1px solid #23252f;
+    border-radius: 5px;
+  }
+  .add-badge {
+    margin-left: 6px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: rgba(94, 234, 212, 0.12);
+    color: #5eead4;
+    font-size: 9px;
+    letter-spacing: 0.6px;
+    vertical-align: middle;
+  }
+  .add-preview-chip {
+    display: block;
+    margin-top: 5px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #b9f5ea;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .add-preview-chip.invalid { color: #f0a58a; }
   .add-error {
     margin: -4px 0 12px;
     font-size: 12px;
     color: #f87171;
+  }
+  .add-error-soft { color: #f0a58a; }
+  .add-toast {
+    position: fixed;
+    left: 50%;
+    bottom: 26px;
+    transform: translateX(-50%);
+    z-index: 60;
+    max-width: 520px;
+    padding: 10px 16px;
+    border-radius: 7px;
+    background: #14161f;
+    border: 1px solid #2a2d3a;
+    color: #cbd0dd;
+    font-size: 12.5px;
+    line-height: 1.4;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    cursor: pointer;
+  }
+  .add-toast.warn {
+    border-color: #7c5a2e;
+    background: #241d12;
+    color: #f0d8a8;
   }
   .add-actions {
     display: flex;

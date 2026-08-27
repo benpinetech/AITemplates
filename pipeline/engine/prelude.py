@@ -289,7 +289,15 @@ def referenced_entities(pine_outputs: Sequence[PineToken]) -> List[str]:
                 walk(getattr(node, attr))
 
     for tok in pine_outputs:
-        walk(tok.inner)
+        inner = getattr(tok, "inner", None)
+        if inner is not None:
+            walk(inner)
+        else:
+            # PineRawBlock — a verbatim multi-token block. Walk each of
+            # its parsed inner @[...] tokens so entities referenced inside
+            # the block still get a CreateVar declaration in the prelude.
+            for sub in getattr(tok, "tokens", ()):
+                walk(sub.inner)
     return order
 
 

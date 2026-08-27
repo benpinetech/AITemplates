@@ -605,6 +605,70 @@ _TOP_LEVEL_CALL_NAMES = frozenset({
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def split_top_level_tokens(source: str) -> List[str]:
+    """Split a Pine *fragment* into its top-level ``@[...]`` token
+    substrings, in order. Literal text between/around tokens is
+    discarded; nested ``@[...]`` inside a token stays part of that token
+    (bracket depth tracks the nesting, same scan as the RTF extractor).
+
+    Raises PineParseError on an ``@[`` that never closes.
+    """
+    if source is None:
+        raise PineParseError("Cannot scan None")
+    tokens: List[str] = []
+    i = 0
+    n = len(source)
+    while i < n:
+        start = source.find("@[", i)
+        if start < 0:
+            break
+        depth = 1
+        pos = start + 2
+        while pos < n and depth > 0:
+            c = source[pos]
+            if c == "[":
+                depth += 1
+            elif c == "]":
+                depth -= 1
+            pos += 1
+        if depth != 0:
+            raise PineParseError(
+                f"unbalanced '@[' with no closing ']' in {source!r}"
+            )
+        tokens.append(source[start:pos])
+        i = pos
+    return tokens
+
+
+def is_single_token(source: str) -> bool:
+    """True if ``source`` is exactly one ``@[...]`` token with no other
+    top-level token and no surrounding literal text (whitespace aside).
+
+    ``@[A.b]`` → True; ``@[if()]x@[endif]`` → False; ``pre @[A]`` → False.
+    """
+    toks = split_top_level_tokens(source)
+    return len(toks) == 1 and toks[0].strip() == source.strip()
+
+
+def parse_fragment(source: str) -> List[PineToken]:
+    """Parse a Pine *fragment* — one or more ``@[...]`` tokens with
+    arbitrary literal text between/around them — into a list of
+    PineTokens. The multi-token counterpart to :func:`parse` (which
+    accepts exactly one token).
+
+    Used to validate human-authored multi-token verified suggestions
+    such as the gender-pronoun ``if/elseif/else/endif`` block, where
+    the literal glue between tokens can't itself be a Pine token.
+
+    Raises PineParseError if the fragment has no ``@[...]`` token, if any
+    token fails to parse, or if a bracket is unbalanced.
+    """
+    token_strs = split_top_level_tokens(source)
+    if not token_strs:
+        raise PineParseError(f"no @[...] token found in fragment {source!r}")
+    return [parse(t) for t in token_strs]
+
+
 def parse(source: str) -> PineToken:
     """Parse a Pine expression of the form ``@[...]`` into a PineToken AST.
 

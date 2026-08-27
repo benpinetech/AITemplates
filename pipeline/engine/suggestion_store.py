@@ -422,7 +422,9 @@ def load_verified_for_agency(
             if "$" in r:
                 continue
             try:
-                pine_parser.parse(r)
+                # Fragment-aware: a rewrite may be a single token or a
+                # multi-token block with literal glue between tokens.
+                pine_parser.parse_fragment(r)
             except Exception as e:  # noqa: BLE001
                 print(
                     f"warning: dropping verified suggestion {p.id!r}: "
@@ -487,8 +489,12 @@ def accept_suggestion(
                 f"refusing to save suggestion with empty Pine token(s): {pine_list!r} "
                 "— pass an empty list (not a list with empty strings) to register a drop."
             )
+        # A rewrite may be a single ``@[...]`` token OR a multi-token
+        # block (e.g. the gender-pronoun ``if/elseif/else/endif`` with
+        # literal text between tokens). ``parse_fragment`` validates
+        # every ``@[...]`` in the piece while allowing the literal glue.
         try:
-            pine_parser.parse(piece)
+            pine_parser.parse_fragment(piece)
         except Exception as e:  # noqa: BLE001
             raise ValueError(
                 f"refusing to cache unparseable Pine output {piece!r}: {e}"

@@ -329,3 +329,33 @@ class PineToken(PineNode):
 
     def unparse(self) -> str:
         return f"@[{self.inner.unparse()}]"
+
+
+@dataclass(frozen=True)
+class PineRawBlock(PineNode):
+    """A verbatim multi-token Pine fragment — one or more ``@[...]``
+    tokens with arbitrary literal text between/around them, kept as raw
+    text and emitted unchanged.
+
+    A single ``@[...]`` maps to a :class:`PineToken`; but human-authored
+    verified suggestions sometimes map one legacy variable to a whole
+    block that doesn't fit the one-token-per-mapping model — e.g. the
+    gender-pronoun ``@[if(...)]his@[elseif(...)]her@[else]his/her@[endif]``
+    where literal pronoun text sits *between* control tokens. There's no
+    single AST for that (Pine control flow spans separate tokens), so we
+    carry it opaquely: each inner ``@[...]`` is validated at save time,
+    and the block is re-inserted byte-for-byte on future conversions.
+
+    Unlike :class:`PineToken`, ``unparse()`` returns the text as-is —
+    it is NOT re-wrapped in ``@[...]``.
+
+    ``tokens`` holds the parsed inner ``@[...]`` tokens (in order) so
+    consumers that need to look inside — e.g. the prelude generator
+    deriving CreateVar declarations from referenced entities — can do so
+    without re-parsing. Emission still uses ``text`` verbatim."""
+
+    text: str
+    tokens: Tuple["PineToken", ...] = ()
+
+    def unparse(self) -> str:
+        return self.text

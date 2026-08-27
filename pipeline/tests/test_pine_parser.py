@@ -9,7 +9,22 @@ from __future__ import annotations
 import pytest
 
 from pipeline.parser import pine_ast
-from pipeline.parser.pine_parser import PineParseError, parse
+from pipeline.parser.pine_parser import (
+    PineParseError,
+    is_single_token,
+    parse,
+    parse_fragment,
+    split_top_level_tokens,
+)
+
+
+# The canonical multi-token block a converter inserts: a gender-pronoun
+# if/elseif/else/endif with literal pronoun text between control tokens.
+GENDER_BLOCK = (
+    "@[if('@[DefName.Gender]'=='M')]his"
+    "@[elseif('@[DefName.Gender]'=='F')]her"
+    "@[else]his/her@[endif]"
+)
 
 
 def round_trip(source: str) -> pine_ast.PineToken:
@@ -208,3 +223,58 @@ class TestErrors:
     def test_unbalanced_nested(self):
         with pytest.raises(PineParseError):
             parse("@[If(@[X.Any()]")
+
+
+class TestFragment:
+    """Multi-token fragment parsing — one or more @[...] tokens with
+    arbitrary literal text between/around them (e.g. the gender-pronoun
+    block a converter inserts as a single mapping)."""
+
+    def test_single_token_fragment(self):
+        toks = parse_fragment("@[Complainant.first.NameFirst]")
+        assert len(toks) == 1
+        assert toks[0].unparse() == "@[Complainant.first.NameFirst]"
+
+    def test_gender_block_parses_every_token(self):
+        toks = parse_fragment(GENDER_BLOCK)
+        # Four control tokens; the parser normalizes casing/spacing on
+        # unparse (if→If, ==→ ' == '), so assert on the canonical forms.
+        assert [t.unparse() for t in toks] == [
+            "@[If('@[DefName.Gender]' == 'M')]",
+            "@[ElseIf('@[DefName.Gender]' == 'F')]",
+            "@[Else]",
+            "@[EndIf]",
+        ]
+
+    def test_split_ignores_literal_glue(self):
+        assert split_top_level_tokens("pre @[A.b] mid @[C.d] post") == [
+            "@[A.b]",
+            "@[C.d]",
+        ]
+
+    def test_split_keeps_nested_token_whole(self):
+        assert split_top_level_tokens("@[if('@[X.Gender]'=='M')]") == [
+            "@[if('@[X.Gender]'=='M')]"
+        ]
+
+    def test_split_raises_on_unbalanced(self):
+        with pytest.raises(PineParseError):
+            split_top_level_tokens("@[if(")
+
+    def test_fragment_rejects_no_token(self):
+        with pytest.raises(PineParseError):
+            parse_fragment("just literal text, no tokens")
+
+    def test_fragment_rejects_unbalanced(self):
+        with pytest.raises(PineParseError):
+            parse_fragment("@[A.b]@[if(")
+
+    def test_fragment_rejects_bad_inner_token(self):
+        with pytest.raises(PineParseError):
+            parse_fragment("@[A.b]glue@[]")
+
+    def test_is_single_token(self):
+        assert is_single_token("@[A.b]") is True
+        assert is_single_token("  @[A.b]  ") is True
+        assert is_single_token(GENDER_BLOCK) is False
+        assert is_single_token("pre @[A.b]") is False

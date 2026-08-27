@@ -290,8 +290,19 @@ class Validator:
         for i, tok in enumerate(tokens):
             text = tok.unparse()
 
+            # A PineRawBlock (verbatim multi-token verified suggestion)
+            # has no single ``inner`` AST — it's carried opaquely. Lint
+            # still runs on its text, but the structural / vocabulary /
+            # CreateVar walks skip it: the block is validated per-token
+            # at save time and is internally self-contained, so it can't
+            # unbalance the surrounding stream.
+            inner = getattr(tok, "inner", None)
+
             # 1. Lint rules.
             issues.extend(self._lint_one(text, i))
+
+            if inner is None:
+                continue
 
             # 2. Vocabulary check.
             if self._allowed_bases is not None:
@@ -300,17 +311,17 @@ class Validator:
 
             # 3. CreateVar bookkeeping (after vocab check so the
             # decl-token itself isn't shielded by its own declaration).
-            decl = _createvar_declared_name(tok.inner)
+            decl = _createvar_declared_name(inner)
             if decl:
                 declared_vars.add(decl)
 
             # 4. Structural updates.
-            keyword = _control_keyword(tok.inner)
+            keyword = _control_keyword(inner)
             if keyword is None:
                 continue
             if keyword in _OPENER_TO_CLOSER:
                 # Capture loop var if this is a Foreach.
-                loop_var = _foreach_loop_var(tok.inner) if keyword.lower() in ("foreach", "cca", "lb") else None
+                loop_var = _foreach_loop_var(inner) if keyword.lower() in ("foreach", "cca", "lb") else None
                 state.open(keyword, i, text, loop_var)
             elif keyword in _CLOSERS:
                 state.close(keyword, i, text)

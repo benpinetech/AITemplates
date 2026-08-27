@@ -80,6 +80,46 @@ class TestReject:
         assert len(records) == 2
 
 
+class TestMultiTokenRewrite:
+    """A rewrite may be a multi-token Pine block (e.g. the gender-pronoun
+    if/elseif/else/endif with literal text between tokens), not just a
+    single @[...] token."""
+
+    GENDER_BLOCK = (
+        "@[if('@[DefName.Gender]'=='M')]his"
+        "@[elseif('@[DefName.Gender]'=='F')]her"
+        "@[else]his/her@[endif]"
+    )
+
+    def test_accepts_multi_token_block(self, tmp_path):
+        path = suggestion_store.accept_suggestion(
+            "%[Cust_Atty_Def_Active2.HisHer]", self.GENDER_BLOCK,
+            agency="oba", root=tmp_path,
+        )
+        assert path.exists()
+        loaded = suggestion_store.load_verified_for_agency("oba", root=tmp_path)
+        assert [p.rewrite_tokens() for p in loaded] == [[self.GENDER_BLOCK]]
+
+    def test_still_rejects_unbalanced_block(self, tmp_path):
+        with pytest.raises(ValueError, match="unparseable"):
+            suggestion_store.accept_suggestion(
+                "%[A]", "@[if('@[X.Gender]'=='M')]his@[endif",  # missing ]
+                agency="oba", root=tmp_path,
+            )
+
+    def test_still_rejects_empty_inner_token(self, tmp_path):
+        with pytest.raises(ValueError, match="unparseable"):
+            suggestion_store.accept_suggestion(
+                "%[A]", "@[A.b]glue@[]", agency="oba", root=tmp_path,
+            )
+
+    def test_still_rejects_no_token_text(self, tmp_path):
+        with pytest.raises(ValueError, match="unparseable"):
+            suggestion_store.accept_suggestion(
+                "%[A]", "just literal text", agency="oba", root=tmp_path,
+            )
+
+
 class TestIsAccepted:
     def test_round_trip(self, tmp_path):
         assert not suggestion_store.is_suggestion_accepted(
